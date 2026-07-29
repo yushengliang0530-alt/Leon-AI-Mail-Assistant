@@ -1,5 +1,34 @@
 # Changelog
 
+## Beta 0.9 — 2026-07-29
+
+### Added
+
+- 中文为主、英文为辅的双语界面
+- 根据中文需求生成完整英文商务邮件
+- 优化用户已有的英文邮件
+- Formal、Friendly、Strong、Executive 四种邮件语气
+- 自定义收件人、主题和发件人签名
+- DeepSeek API 接入
+- 邮件主题和正文复制功能
+- AI 服务状态、生成耗时和 Token 用量显示
+- 测试访问码保护
+- Streamlit Community Cloud 云端部署
+
+### Security
+
+- API Key 通过 Streamlit Secrets 管理
+- secrets.toml 不进入 Git
+- 页面不显示 API Key 和内部异常信息
+
+### Known limitations
+
+- 当前为邀请测试版本
+- 暂无正式用户注册和支付功能
+- 暂无使用额度和订阅管理
+- 暂无 Reply Email 和 Explain Email 功能
+- 生成结果发送前仍需用户人工检查
+
 ## v0.5
 
 - Prepared Streamlit Community Cloud deployment
