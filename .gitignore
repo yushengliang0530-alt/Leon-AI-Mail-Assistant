@@ -1,0 +1,13 @@
+.DS_Store
+.env
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+.streamlit/secrets.toml
+.superpowers/
