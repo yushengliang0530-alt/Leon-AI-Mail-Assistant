@@ -1,6 +1,7 @@
 """Leon AI V2.0 workspace home prototype."""
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import streamlit as st
 
@@ -22,21 +23,101 @@ PHASE_2_ACTIONS = {
 }
 
 
-def _action_button(
+@dataclass(frozen=True)
+class TaskCard:
+    action: str
+    title: str
+    description: str
+    icon: str
+    status: str | None = None
+    primary: bool = False
+
+
+HOME_TASK_CARDS = {
+    card.action: card
+    for card in (
+        TaskCard(
+            "reply",
+            "回复收到的邮件",
+            "识别对方要求、必须回复的问题和潜在风险。",
+            "reply",
+            primary=True,
+        ),
+        TaskCard(
+            "supplier",
+            "催供应商",
+            "催报价、催交期、更新计划或要求解释延期。",
+            "local_shipping",
+        ),
+        TaskCard(
+            "meeting",
+            "邀请会议",
+            "生成包含时间、地点、议程和确认要求的会议邮件。",
+            "calendar_month",
+        ),
+        TaskCard(
+            "progress",
+            "汇报项目进展",
+            "整理进展、风险、影响和下一步。",
+            "monitoring",
+        ),
+        TaskCard(
+            "approval",
+            "请求审批",
+            "说明背景、原因、影响和需要管理层决定的事项。",
+            "assignment_turned_in",
+        ),
+        TaskCard(
+            "schedule",
+            "确认交期或计划",
+            "确认时间、里程碑和需要对方采取的行动。",
+            "event_available",
+        ),
+        TaskCard(
+            "improve",
+            "优化已有草稿",
+            "改善语法、结构、语气和行动要求。",
+            "edit_note",
+        ),
+        TaskCard(
+            "preflight",
+            "发送前检查",
+            "检查遗漏、承诺、敏感信息和表达风险。",
+            "verified_user",
+            status="开发中",
+        ),
+        TaskCard(
+            "scenarios",
+            "更多场景",
+            "采购、项目、行政和管理场景。",
+            "folder_open",
+        ),
+    )
+}
+
+HIGH_FREQUENCY_ROWS = (
+    ("supplier", "meeting"),
+    ("progress", "approval"),
+)
+TOOL_ACTIONS = ("improve", "preflight", "scenarios")
+
+
+def render_task_card(
     *,
-    action: str,
-    title: str,
-    description: str,
-    prominent: bool = False,
+    card: TaskCard,
     on_click: Callable[[], None] | None = None,
 ) -> None:
+    display_title = card.title
+    if card.status:
+        display_title += f"　·　{card.status}"
     st.button(
-        f"**{title}**  \n{description}",
-        key=f"home__action__{action}",
-        type="primary" if prominent else "secondary",
+        f"**{display_title}**  \n{card.description}",
+        key=f"home__action__{card.action}",
+        type="primary" if card.primary else "secondary",
+        icon=f":material/{card.icon}:",
         use_container_width=True,
         on_click=on_click or set_selected_home_action,
-        args=() if on_click else (action,),
+        args=() if on_click else (card.action,),
     )
 
 
@@ -195,9 +276,12 @@ def render_home(
             text-transform:uppercase;
         }
         .st-key-home__workspace div[data-testid="stButton"] > button {
-            min-height:5.65rem;
-            justify-content:flex-start;
-            padding:1rem 1.05rem;
+            display:flex;
+            align-items:stretch;
+            width:100%;
+            height:7rem;
+            min-height:7rem;
+            padding:1rem 1.125rem;
             border-color:var(--workspace-line);
             border-radius:.85rem;
             background:#fff;
@@ -207,9 +291,57 @@ def render_home(
             line-height:1.45;
             box-shadow:0 7px 24px rgba(28,48,79,.045);
         }
+        .st-key-home__workspace div[data-testid="stButton"] > button > div {
+            width:100%;
+        }
+        .st-key-home__workspace div[data-testid="stButton"] > button > div > span {
+            display:grid;
+            grid-template-columns:3.25rem minmax(0,1fr);
+            align-items:center;
+            column-gap:1.125rem;
+            width:100%;
+            min-width:0;
+        }
+        .st-key-home__workspace div[data-testid="stButton"] > button
+          [data-testid="stIconMaterial"] {
+            display:grid;
+            place-items:center;
+            width:3.25rem;
+            height:3.25rem;
+            margin:0;
+            border-radius:.75rem;
+            background:var(--workspace-blue-soft);
+            color:var(--workspace-blue);
+            font-size:1.5rem;
+            line-height:1;
+            flex:none;
+        }
+        .st-key-home__workspace div[data-testid="stButton"] > button
+          [data-testid="stMarkdownContainer"] {
+            min-width:0;
+            width:100%;
+            align-self:center;
+        }
         .st-key-home__workspace div[data-testid="stButton"] > button p {
             width:100%;
+            min-height:3.65rem;
+            margin:0;
             text-align:left;
+            color:var(--workspace-muted);
+            font-size:.78rem;
+            line-height:1.45;
+        }
+        .st-key-home__workspace div[data-testid="stButton"] > button p strong {
+            display:block;
+            min-height:1.35rem;
+            margin-bottom:.3rem;
+            color:var(--workspace-ink);
+            font-size:.91rem;
+            font-weight:760;
+            line-height:1.35;
+        }
+        .st-key-home__workspace div[data-testid="stButton"] > button p br {
+            display:none;
         }
         .st-key-home__workspace div[data-testid="stButton"] > button:hover {
             border-color:#9fb3d5;
@@ -217,18 +349,51 @@ def render_home(
             color:var(--workspace-ink);
             transform:translateY(-1px);
         }
+        .st-key-home__workspace div[data-testid="stButton"] > button:focus-visible {
+            outline:3px solid rgba(40,88,199,.24);
+            outline-offset:2px;
+            border-color:var(--workspace-blue);
+        }
+        .st-key-home__workspace div[data-testid="stButton"] > button:active {
+            transform:translateY(0);
+            box-shadow:0 3px 12px rgba(28,48,79,.08);
+        }
         .st-key-home__workspace .st-key-home__action__reply button {
-            min-height:6.7rem;
+            height:7.5rem;
+            min-height:7.5rem;
             border-color:#2858c7 !important;
             background:#2858c7 !important;
             color:#fff !important;
             box-shadow:0 14px 32px rgba(40,88,199,.2) !important;
         }
+        .st-key-home__workspace .st-key-home__action__reply button
+          [data-testid="stIconMaterial"] {
+            background:rgba(255,255,255,.14);
+            color:#fff;
+        }
+        .st-key-home__workspace .st-key-home__action__reply button p,
+        .st-key-home__workspace .st-key-home__action__reply button p strong {
+            color:#fff;
+        }
+        .st-key-home__workspace .st-key-home__action__reply button p {
+            color:rgba(255,255,255,.82);
+        }
         .st-key-home__workspace .st-key-home__action__improve button,
         .st-key-home__workspace .st-key-home__action__preflight button,
         .st-key-home__workspace .st-key-home__action__scenarios button {
-            min-height:4.8rem;
+            height:8rem;
+            min-height:8rem;
             background:#f8faff;
+        }
+        .st-key-home__workspace .st-key-home__action__improve button p,
+        .st-key-home__workspace .st-key-home__action__preflight button p,
+        .st-key-home__workspace .st-key-home__action__scenarios button p {
+            min-height:4.8rem;
+        }
+        .st-key-home__workspace .st-key-home__action__improve button p strong,
+        .st-key-home__workspace .st-key-home__action__preflight button p strong,
+        .st-key-home__workspace .st-key-home__action__scenarios button p strong {
+            min-height:2.5rem;
         }
         .st-key-home__workspace .workspace-footer {
             margin-top:2rem;
@@ -266,7 +431,39 @@ def render_home(
                 flex:1 1 100% !important;
             }
             .st-key-home__workspace div[data-testid="stButton"] > button {
-                min-height:4.9rem;
+                height:auto;
+                min-height:5.5rem;
+                padding:.8rem .9rem;
+            }
+            .st-key-home__workspace div[data-testid="stButton"] > button > div > span {
+                grid-template-columns:2.75rem minmax(0,1fr);
+                column-gap:.875rem;
+            }
+            .st-key-home__workspace div[data-testid="stButton"] > button
+              [data-testid="stIconMaterial"] {
+                width:2.75rem;
+                height:2.75rem;
+                border-radius:.65rem;
+                font-size:1.375rem;
+            }
+            .st-key-home__workspace div[data-testid="stButton"] > button p,
+            .st-key-home__workspace .st-key-home__action__improve button p,
+            .st-key-home__workspace .st-key-home__action__preflight button p,
+            .st-key-home__workspace .st-key-home__action__scenarios button p {
+                min-height:0;
+            }
+            .st-key-home__workspace div[data-testid="stButton"] > button p strong,
+            .st-key-home__workspace .st-key-home__action__improve button p strong,
+            .st-key-home__workspace .st-key-home__action__preflight button p strong,
+            .st-key-home__workspace .st-key-home__action__scenarios button p strong {
+                min-height:0;
+            }
+            .st-key-home__workspace .st-key-home__action__reply button,
+            .st-key-home__workspace .st-key-home__action__improve button,
+            .st-key-home__workspace .st-key-home__action__preflight button,
+            .st-key-home__workspace .st-key-home__action__scenarios button {
+                height:auto;
+                min-height:5.5rem;
             }
         }
         @media (prefers-reduced-motion:reduce) {
@@ -304,11 +501,8 @@ def render_home(
             '<div class="workspace-section">首先处理 · Reply workflow</div>',
             unsafe_allow_html=True,
         )
-        _action_button(
-            action="reply",
-            title="回复收到的邮件",
-            description="识别对方要求、必须回复的问题和潜在风险。",
-            prominent=True,
+        render_task_card(
+            card=HOME_TASK_CARDS["reply"],
             on_click=open_reply_workspace,
         )
 
@@ -316,56 +510,29 @@ def render_home(
             '<div class="workspace-section">高频商务场景</div>',
             unsafe_allow_html=True,
         )
-        scene_rows = (
-            (
-                ("supplier", "催供应商", "催报价、催交期、更新计划或要求解释延期。"),
-                ("meeting", "邀请会议", "生成包含时间、地点、议程和确认要求的会议邮件。"),
-            ),
-            (
-                ("progress", "汇报项目进展", "整理进展、风险、影响和下一步。"),
-                ("approval", "请求审批", "说明背景、原因、影响和需要管理层决定的事项。"),
-            ),
-        )
-        for row in scene_rows:
+        for row in HIGH_FREQUENCY_ROWS:
             left, right = st.columns(2)
-            for column, (action, title, description) in zip(
+            for column, action in zip(
                 (left, right),
                 row,
                 strict=True,
             ):
                 with column:
-                    _action_button(
-                        action=action,
-                        title=title,
-                        description=description,
-                    )
-        _action_button(
-            action="schedule",
-            title="确认交期或计划",
-            description="确认时间、里程碑和需要对方采取的行动。",
-        )
+                    render_task_card(card=HOME_TASK_CARDS[action])
+        render_task_card(card=HOME_TASK_CARDS["schedule"])
 
         st.markdown(
             '<div class="workspace-section">处理已有内容</div>',
             unsafe_allow_html=True,
         )
         tool_columns = st.columns(3)
-        tool_actions = (
-            ("improve", "优化已有草稿", "改善语法、结构、语气和行动要求。"),
-            ("preflight", "发送前检查　·　开发中", "检查遗漏、承诺、敏感信息和表达风险。"),
-            ("scenarios", "更多场景", "采购、项目、行政和管理场景。"),
-        )
-        for column, (action, title, description) in zip(
+        for column, action in zip(
             tool_columns,
-            tool_actions,
+            TOOL_ACTIONS,
             strict=True,
         ):
             with column:
-                _action_button(
-                    action=action,
-                    title=title,
-                    description=description,
-                )
+                render_task_card(card=HOME_TASK_CARDS[action])
 
         _render_selected_action()
 
