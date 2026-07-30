@@ -10,6 +10,9 @@ DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_TIMEOUT_SECONDS = 45.0
 DEFAULT_MAX_TOKENS = 1600
 MAX_INPUT_CHARS = 8000
+APP_VERSION = "1.0"
+PRODUCT_NAME_ZH = "AI商务沟通优化助手"
+PRODUCT_NAME_EN = "AI Business Communication Optimization Assistant"
 
 
 @dataclass(frozen=True)

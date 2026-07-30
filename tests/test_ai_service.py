@@ -9,6 +9,7 @@ from ai_service import (
     SenderDetails,
     append_signature,
     build_signature,
+    parse_email_fallback,
     parse_email_result,
 )
 from config import DeepSeekSettings
@@ -58,6 +59,36 @@ class DeepSeekEmailServiceTests(unittest.TestCase):
         )
         self.assertEqual(result.subject, "Delivery")
         self.assertIn("Please confirm.", result.body)
+
+    def test_communication_analysis_is_parsed(self) -> None:
+        result = parse_email_result(
+            json.dumps(
+                {
+                    "subject": "Delivery",
+                    "body": "Please confirm.",
+                    "communication_analysis": {
+                        "purpose": "良好：目的清晰",
+                        "action_required": "明确",
+                        "deadline": "未提供",
+                        "tone": "正式且适当",
+                        "commitment_risk": "未发现明显风险",
+                        "ambiguity_risk": "未发现明显风险",
+                        "localization_note": "核对称谓",
+                        "improvement_suggestions": ["增加回复期限"],
+                    },
+                }
+            )
+        )
+        self.assertTrue(result.communication_analysis.available)
+        self.assertEqual(result.communication_analysis.deadline, "未提供")
+
+    def test_plain_email_fallback(self) -> None:
+        result = parse_email_fallback(
+            "Subject: Delivery Update\n\nBody: Dear Team,\n\nPlease confirm."
+        )
+        self.assertEqual(result.subject, "Delivery Update")
+        self.assertIn("Dear Team", result.body)
+        self.assertFalse(result.communication_analysis.available)
 
     def test_generation_uses_json_mode_and_appends_local_signature(self) -> None:
         fake_client = FakeClient(
@@ -123,6 +154,45 @@ class DeepSeekEmailServiceTests(unittest.TestCase):
         self.assertEqual(result.subject, "Meeting Confirmation")
         self.assertTrue(result.body.endswith("Sincerely,"))
         self.assertNotIn("Leon", result.body)
+
+    def test_improvement_preserves_content_and_uses_local_signature(self) -> None:
+        fake_client = FakeClient(
+            [
+                json.dumps(
+                    {
+                        "subject": "Action Required",
+                        "email_body": (
+                            "Dear Jason,\n\nPlease review the delayed item "
+                            "and reply as soon as possible."
+                        ),
+                        "communication_analysis": {
+                            "purpose": "良好：目的清晰",
+                            "action_required": "明确",
+                            "deadline": "未提供",
+                            "tone": "保持紧迫且专业",
+                            "commitment_risk": "未发现明显风险",
+                            "ambiguity_risk": "建议明确具体事项",
+                            "localization_note": "称谓自然",
+                            "improvement_suggestions": [],
+                        },
+                    }
+                )
+            ]
+        )
+        service = DeepSeekEmailService(
+            self.settings(),
+            client_factory=lambda _: fake_client,
+        )
+        result = service.improve_email(
+            original_email="Dear Jason, please check the delayed item ASAP.",
+            tone="Formal",
+            sender=SenderDetails(name="Alice Wang"),
+            country_region="新加坡 / Singapore",
+        )
+        self.assertIn("delayed item", result.body)
+        self.assertTrue(result.body.endswith("Best regards,\nAlice Wang"))
+        self.assertTrue(result.communication_analysis.available)
+        self.assertEqual(len(fake_client.completions.calls), 1)
 
     def test_tone_prompts_are_distinct(self) -> None:
         prompts = {
@@ -202,6 +272,27 @@ class DeepSeekEmailServiceTests(unittest.TestCase):
                 sender=SenderDetails(),
             )
         self.assertEqual(context.exception.code, "parse_error")
+        self.assertEqual(len(fake_client.completions.calls), 2)
+
+    def test_non_json_email_falls_back_after_one_repair(self) -> None:
+        fake_client = FakeClient(
+            [
+                "Subject: Delivery Update\n\nBody: Dear Team,\nPlease confirm.",
+                "still not json",
+            ]
+        )
+        service = DeepSeekEmailService(
+            self.settings(),
+            client_factory=lambda _: fake_client,
+        )
+        result = service.improve_email(
+            original_email="Dear Team, please confirm.",
+            tone="Formal",
+            sender=SenderDetails(),
+        )
+        self.assertEqual(result.subject, "Delivery Update")
+        self.assertIn("Dear Team", result.body)
+        self.assertFalse(result.communication_analysis.available)
         self.assertEqual(len(fake_client.completions.calls), 2)
 
     def test_missing_api_key_is_safe(self) -> None:

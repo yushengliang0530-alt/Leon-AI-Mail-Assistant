@@ -1,52 +1,33 @@
 # Roadmap
 
-## v0.1 — Interface prototype
+## Current — V1.0 商务沟通优化
 
-- Streamlit interface
-- Chinese brief input
-- Four business tones
-- Editable subject and body
-- Copy controls
+- 产品升级为 Leon AI · AI商务沟通优化助手
+- 保留英文邮件生成、优化、复制和动态签名
+- 增加本地敏感内容辅助检查与高风险提交确认
+- 增加收件人国家或地区选择
+- 增加本地化称谓与跨文化沟通建议
+- 增加商务沟通质量分析
+- 增加四个可交互案例，填充时不自动调用 AI
+- 增加使用方法、安全边界和 V1.0 版本标识
+- 保持 Streamlit Community Cloud 和 Python 3.12 兼容
 
-## v0.2 — 中文主界面、发件人与签名
+## Completed foundations
 
-- 中文主显示、英文辅助标注
-- “写英文邮件”和“优化英文邮件”共享发件人信息
-- 根据语气动态生成邮件签名
-- 中文校验、状态和复制反馈
-- 不设置默认个人发件人姓名
-- 桌面和窄屏响应式适配
+- v0.1：Streamlit 界面原型
+- v0.2：中文主界面、发件人与动态签名
+- v0.3：DeepSeek API 与结构化输出
+- v0.4：质量、错误处理和请求保护
+- v0.5：外部测试门禁与云端部署准备
+- Beta 0.9：邀请测试版上线
 
-## v0.3 — DeepSeek AI integration
+## Later / Future
 
-- Connect DeepSeek through the OpenAI-compatible Chat Completions API
-- Replace local preview generation with real model output
-- Add JSON response parsing and one repair attempt
-- Add secure Secrets and environment configuration
-- Add Chinese API errors, loading state, and duplicate-call protection
-- Keep signatures deterministic in local Python code
-
-## v0.4 — Stability and quality validation
-
-- Remove remaining preview and mock production paths
-- Strengthen generation and improvement prompts
-- Add safe AI service status, duration, and token usage
-- Add input-length, repeat-request, and rerun protection
-- Expand automated tests without making paid API calls
-- Complete API key and deployment-readiness review
-
-## v0.5 — External test deployment preparation
-
-- Prepare Streamlit Community Cloud configuration
-- Add an optional invited-tester access code
-- Add privacy and external-test guidance
-- Pin direct dependencies and document Python 3.12
-- Complete Git, Secrets, and cross-platform safety checks
-
-## Later
-
-- Email history
-- Reusable sender profiles
-- Authentication and team features
-- Prompt evaluation and quality regression tests
-- Public deployment, rate limiting, and production monitoring
+- 用户账号
+- 使用额度
+- 支付与订阅
+- 历史记录
+- 企业知识库
+- 管理后台
+- 正式身份认证、团队权限和生产级限流
+- 提示词质量回归评估与生产监控

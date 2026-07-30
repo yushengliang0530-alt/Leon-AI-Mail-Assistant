@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import html
 import json
 import time
@@ -11,10 +12,28 @@ from access_control import (
     verify_access_code,
 )
 from ai_service import AIServiceError, DeepSeekEmailService, SenderDetails
-from config import MAX_INPUT_CHARS, load_settings
+from communication_analysis_service import CommunicationAnalysis
+from config import (
+    APP_VERSION,
+    MAX_INPUT_CHARS,
+    PRODUCT_NAME_EN,
+    PRODUCT_NAME_ZH,
+    load_settings,
+)
+from content_risk_service import (
+    ADVISORY_NOTICE,
+    RiskAssessment,
+    analyze_content_risk,
+)
+from examples import BUSINESS_EXAMPLES, BusinessExample
+from localization_service import (
+    COUNTRY_REGION_OPTIONS,
+    LocalizationGuidance,
+    build_localization_guidance,
+)
 
 st.set_page_config(
-    page_title="Leon AI · 英文商务写作助手",
+    page_title=f"Leon AI · {PRODUCT_NAME_ZH} · V{APP_VERSION}",
     page_icon="✦",
     layout="centered",
     initial_sidebar_state="collapsed",
@@ -350,6 +369,74 @@ st.markdown(
         text-align: right;
     }
 
+    .version-badge {
+        display: inline-flex;
+        align-items: center;
+        margin-left: 0.55rem;
+        padding: 0.18rem 0.48rem;
+        border: 1px solid #b9c9ef;
+        border-radius: 999px;
+        background: #edf3ff;
+        color: #2457d6;
+        font-size: 0.65rem;
+        font-weight: 750;
+        vertical-align: middle;
+    }
+
+    .capability-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.65rem;
+        margin: 0 0 1rem;
+    }
+
+    .capability-card {
+        padding: 0.9rem;
+        border: 1px solid #dce3ec;
+        border-radius: 0.8rem;
+        background: rgba(255, 255, 255, 0.78);
+    }
+
+    .capability-card strong {
+        display: block;
+        color: #20344f;
+        font-size: 0.82rem;
+    }
+
+    .capability-card span {
+        display: block;
+        margin-top: 0.3rem;
+        color: #6f7e92;
+        font-size: 0.72rem;
+        line-height: 1.5;
+    }
+
+    .analysis-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.55rem;
+        margin: 0.7rem 0;
+    }
+
+    .analysis-item {
+        padding: 0.72rem 0.8rem;
+        border: 1px solid #e0e6ee;
+        border-radius: 0.7rem;
+        background: #fbfcfe;
+    }
+
+    .analysis-item .label {
+        color: #7b8798;
+        font-size: 0.68rem;
+    }
+
+    .analysis-item .value {
+        margin-top: 0.2rem;
+        color: #263955;
+        font-size: 0.8rem;
+        line-height: 1.48;
+    }
+
     @media (max-width: 640px) {
         [data-testid="stMainBlockContainer"] {
             padding: 1.3rem 1rem 2.5rem;
@@ -365,6 +452,11 @@ st.markdown(
 
         div[data-testid="stForm"] {
             padding: 1.2rem 1rem;
+        }
+
+        .capability-grid,
+        .analysis-grid {
+            grid-template-columns: 1fr;
         }
     }
     </style>
@@ -535,6 +627,157 @@ def sender_details(
     )
 
 
+def region_selector(prefix: str) -> tuple[str, str]:
+    field_label("收件人所在国家或地区", "Recipient Country or Region")
+    region = st.selectbox(
+        "收件人所在国家或地区",
+        COUNTRY_REGION_OPTIONS,
+        key=f"{prefix}_country_region",
+        label_visibility="collapsed",
+    )
+    custom_region = ""
+    if region == "其他 / Other":
+        field_label("请填写国家或地区", "Please specify the country or region", "可选")
+        custom_region = st.text_input(
+            "请填写国家或地区",
+            key=f"{prefix}_custom_region",
+            label_visibility="collapsed",
+        )
+    return region, custom_region
+
+
+def render_risk_assessment(assessment: RiskAssessment) -> None:
+    st.markdown("#### 信息安全提示 · Sensitive Information Check")
+    if assessment.risk_level == "high":
+        st.error(f"高风险提示：{assessment.summary}")
+    elif assessment.risk_level == "medium":
+        st.warning(f"注意：{assessment.summary}")
+    else:
+        st.success(f"普通提示：{assessment.summary}")
+    for item in assessment.risk_items:
+        st.markdown(
+            f"- **{item.category}**：{item.description} {item.suggestion}"
+        )
+    st.caption(ADVISORY_NOTICE)
+
+
+def render_localization_guidance(guidance: LocalizationGuidance) -> None:
+    with st.expander(
+        "称谓与本地化建议 · Salutation & Localization Guidance",
+        expanded=False,
+    ):
+        st.markdown(f"**推荐称谓**：{guidance.recommended_salutation}")
+        st.markdown(f"**称谓风险**：{guidance.salutation_risk}")
+        st.markdown(f"**礼貌程度**：{guidance.politeness_guidance}")
+        st.markdown(f"**跨文化提醒**：{guidance.cross_cultural_note}")
+        st.caption("以上内容仅为辅助建议，请结合对方公司文化和双方熟悉程度。")
+
+
+def localization_context(guidance: LocalizationGuidance) -> str:
+    return (
+        f"Recommended salutation: {guidance.recommended_salutation}\n"
+        f"Salutation risk: {guidance.salutation_risk}\n"
+        f"Politeness guidance: {guidance.politeness_guidance}\n"
+        f"Cross-cultural note: {guidance.cross_cultural_note}"
+    )
+
+
+def render_communication_analysis(analysis: CommunicationAnalysis) -> None:
+    st.markdown(
+        """
+        <div class="result-wrap">
+            <div class="section-heading">
+                <h2>商务沟通分析 <small style="color:#8a97a8;font-size:.7rem;font-weight:500">Business Communication Analysis</small></h2>
+                <span>辅助提示 · 人工确认</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    rows = (
+        ("沟通目的", analysis.purpose),
+        ("行动要求", analysis.action_required),
+        ("截止时间", analysis.deadline),
+        ("商务语气", analysis.tone),
+        ("承诺风险", analysis.commitment_risk),
+        ("歧义风险", analysis.ambiguity_risk),
+        ("本地化提示", analysis.localization_note),
+    )
+    cards = "".join(
+        (
+            '<div class="analysis-item">'
+            f'<div class="label">{html.escape(label)}</div>'
+            f'<div class="value">{html.escape(value)}</div>'
+            "</div>"
+        )
+        for label, value in rows
+    )
+    st.markdown(f'<div class="analysis-grid">{cards}</div>', unsafe_allow_html=True)
+    if analysis.improvement_suggestions:
+        st.markdown("**改进建议**")
+        for index, suggestion in enumerate(
+            analysis.improvement_suggestions,
+            start=1,
+        ):
+            st.markdown(f"{index}. {suggestion}")
+    if not analysis.available:
+        st.warning("暂时无法完成完整分析，请人工检查邮件内容。")
+
+
+def _content_digest(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def record_high_risk_confirmation(
+    source_key: str,
+    checkbox_key: str,
+    digest_key: str,
+) -> None:
+    if st.session_state.get(checkbox_key):
+        source = str(st.session_state.get(source_key, ""))
+        st.session_state[digest_key] = _content_digest(source)
+    else:
+        st.session_state[digest_key] = ""
+
+
+def apply_example(example: BusinessExample) -> None:
+    st.session_state.writing_mode = example.mode
+    if example.mode == "写英文邮件":
+        st.session_state.saved_generate_request = example.source_text
+        st.session_state.generate_request = example.source_text
+        st.session_state.saved_generate_tone_choice = example.tone_choice
+        st.session_state.generate_tone_choice = example.tone_choice
+        st.session_state.generate_country_region = example.country_region
+    else:
+        st.session_state.saved_improve_original_email = example.source_text
+        st.session_state.improve_original_email = example.source_text
+        st.session_state.saved_improve_tone_choice = example.tone_choice
+        st.session_state.improve_tone_choice = example.tone_choice
+        st.session_state.improve_country_region = example.country_region
+
+
+def render_examples() -> None:
+    with st.expander("案例演示 · Examples", expanded=False):
+        for example in BUSINESS_EXAMPLES:
+            st.markdown(f"#### {example.title}")
+            st.markdown(f"**使用场景**：{example.title}")
+            st.markdown(f"**输入示例**：{example.source_text}")
+            st.markdown(
+                f"**推荐语气**：{example.tone_choice}　"
+                f"**国家或地区**：{example.country_region}"
+            )
+            st.markdown(f"**预期效果**：{example.expected_result}")
+            if example.localization_note:
+                st.caption(example.localization_note)
+            st.button(
+                "使用此案例 · Use This Example",
+                key=f"use_example_{example.key}",
+                on_click=apply_example,
+                args=(example,),
+            )
+            st.divider()
+
+
 runtime_secrets = read_streamlit_secrets()
 settings = load_settings(runtime_secrets)
 app_access_code = configured_access_code(runtime_secrets)
@@ -596,12 +839,15 @@ access_protection_label = (
 
 
 SESSION_DEFAULTS = {
+    "writing_mode": "写英文邮件",
     "generated": False,
     "email_subject": "",
     "email_body": "",
+    "generated_analysis": CommunicationAnalysis(),
     "improved": False,
     "improved_subject": "",
     "improved_body": "",
+    "improved_analysis": CommunicationAnalysis(),
     "shared_sender_name": "",
     "shared_job_title": "",
     "shared_company": "",
@@ -612,6 +858,14 @@ SESSION_DEFAULTS = {
     "saved_generate_tone_choice": "正式 · Formal",
     "saved_improve_original_email": "",
     "saved_improve_tone_choice": "正式 · Formal",
+    "generate_country_region": COUNTRY_REGION_OPTIONS[0],
+    "generate_custom_region": "",
+    "improve_country_region": COUNTRY_REGION_OPTIONS[0],
+    "improve_custom_region": "",
+    "generate_high_risk_confirmed": False,
+    "generate_confirmed_digest": "",
+    "improve_high_risk_confirmed": False,
+    "improve_confirmed_digest": "",
     "request_in_progress": False,
     "deepseek_connected": False,
     "last_request_duration": None,
@@ -648,27 +902,45 @@ def restore_page_inputs(widget_keys: list[str]) -> None:
 
 
 st.markdown(
-    """
+    f"""
     <div class="brand-row">
         <div class="brand-mark">LA</div>
-        <div class="brand-name">Leon AI</div>
+        <div class="brand-name">Leon AI <span class="version-badge">V{APP_VERSION}</span></div>
     </div>
     <div class="hero">
-        <div class="eyebrow">Business English · 商务英文</div>
-        <h1>英文商务写作助手</h1>
+        <div class="eyebrow">BUSINESS COMMUNICATION · 商务沟通</div>
+        <h1>{PRODUCT_NAME_ZH}</h1>
         <p>
-            将中文需求快速整理成清晰、专业、符合商务场景的英文邮件。
-            <span class="en-subtitle">Turn your Chinese brief into clear and professional business English.</span>
+            帮助职场人士更安全、专业、高效地完成国际商务沟通。
+            <span class="en-subtitle">{PRODUCT_NAME_EN}<br>Create safer, clearer and more professional business communication.</span>
         </p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
+st.markdown(
+    """
+    <div class="section-heading">
+        <h2>核心功能 <small style="color:#8a97a8;font-size:.7rem;font-weight:500">Core Capabilities</small></h2>
+    </div>
+    <div class="capability-grid">
+        <div class="capability-card"><strong>商务邮件生成</strong><span>根据中文业务需求生成结构完整的英文商务邮件。</span></div>
+        <div class="capability-card"><strong>英文表达优化</strong><span>修正语法、中式英语、逻辑结构和商务语气。</span></div>
+        <div class="capability-card"><strong>沟通风险分析</strong><span>提示可能存在的敏感信息、承诺风险和表达歧义。</span></div>
+        <div class="capability-card"><strong>本地化沟通建议</strong><span>提供称谓、礼貌程度和跨文化表达辅助建议。</span></div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+st.info(
+    "安全提醒：请勿输入密码、身份证件、银行账号、API Key 或其他敏感凭证。"
+    "风险提示仅供辅助，最终请人工确认。"
+)
+
 active_page = st.segmented_control(
     "写作模式",
     ["写英文邮件", "优化英文邮件"],
-    default="写英文邮件",
     key="writing_mode",
     on_change=preserve_page_inputs,
     label_visibility="collapsed",
@@ -696,6 +968,8 @@ if active_page == "写英文邮件":
         """,
         unsafe_allow_html=True,
     )
+
+    country_region, custom_region = region_selector("generate")
 
     with st.form("email_form", border=True):
         field_label("收件人", "Recipient", "可选")
@@ -748,12 +1022,43 @@ if active_page == "写英文邮件":
             unsafe_allow_html=True,
         )
 
+    risk_assessment = analyze_content_risk(request)
+    guidance = build_localization_guidance(
+        recipient=recipient,
+        country_region=country_region,
+        custom_region=custom_region,
+        tone=tone,
+        source_text=request,
+    )
+    high_risk_confirmed = False
+    if request.strip():
+        render_risk_assessment(risk_assessment)
+        if risk_assessment.requires_confirmation:
+            st.checkbox(
+                "我已检查并确认内容可以提交给 AI 处理。",
+                key="generate_high_risk_confirmed",
+                on_change=record_high_risk_confirmation,
+                args=(
+                    "generate_request",
+                    "generate_high_risk_confirmed",
+                    "generate_confirmed_digest",
+                ),
+            )
+            high_risk_confirmed = (
+                st.session_state.generate_high_risk_confirmed
+                and st.session_state.generate_confirmed_digest
+                == _content_digest(request)
+            )
+        render_localization_guidance(guidance)
+
     if submitted:
         preserve_page_inputs()
         if not request.strip():
             st.error("请先填写中文需求。")
         elif len(request) > MAX_INPUT_CHARS:
             st.error(f"中文需求不能超过 {MAX_INPUT_CHARS} 个字符。")
+        elif risk_assessment.requires_confirmation and not high_risk_confirmed:
+            st.error("检测到高风险内容。请先完成人工检查并勾选确认后再提交。")
         elif st.session_state.request_in_progress:
             st.warning("当前请求正在处理中，请稍候。")
         else:
@@ -766,6 +1071,12 @@ if active_page == "写英文邮件":
                         requested_subject=topic,
                         chinese_brief=request,
                         tone=tone,
+                        country_region=(
+                            custom_region.strip()
+                            if country_region == "其他 / Other"
+                            else country_region
+                        ),
+                        localization_context=localization_context(guidance),
                         sender=sender_details(
                             sender_name,
                             job_title,
@@ -777,6 +1088,9 @@ if active_page == "写英文邮件":
                 st.session_state.email_body = result.body
                 st.session_state.subject_editor = result.subject
                 st.session_state.body_editor = result.body
+                st.session_state.generated_analysis = (
+                    result.communication_analysis
+                )
                 st.session_state.generated = True
                 st.session_state.deepseek_connected = True
                 st.session_state.last_request_duration = (
@@ -793,6 +1107,7 @@ if active_page == "写英文邮件":
             st.session_state.subject_editor = st.session_state.email_subject
         if "body_editor" not in st.session_state:
             st.session_state.body_editor = st.session_state.email_body
+        render_communication_analysis(st.session_state.generated_analysis)
         st.markdown(
             """
             <div class="result-wrap">
@@ -868,6 +1183,8 @@ else:
         unsafe_allow_html=True,
     )
 
+    improve_country_region, improve_custom_region = region_selector("improve")
+
     with st.form("improve_form", border=True):
         field_label("原始英文邮件", "Original English Email", "必填")
         original_email = st.text_area(
@@ -905,12 +1222,46 @@ else:
             unsafe_allow_html=True,
         )
 
+    improve_risk_assessment = analyze_content_risk(original_email)
+    improve_guidance = build_localization_guidance(
+        recipient="",
+        country_region=improve_country_region,
+        custom_region=improve_custom_region,
+        tone=improve_tone,
+        source_text=original_email,
+    )
+    improve_high_risk_confirmed = False
+    if original_email.strip():
+        render_risk_assessment(improve_risk_assessment)
+        if improve_risk_assessment.requires_confirmation:
+            st.checkbox(
+                "我已检查并确认内容可以提交给 AI 处理。",
+                key="improve_high_risk_confirmed",
+                on_change=record_high_risk_confirmation,
+                args=(
+                    "improve_original_email",
+                    "improve_high_risk_confirmed",
+                    "improve_confirmed_digest",
+                ),
+            )
+            improve_high_risk_confirmed = (
+                st.session_state.improve_high_risk_confirmed
+                and st.session_state.improve_confirmed_digest
+                == _content_digest(original_email)
+            )
+        render_localization_guidance(improve_guidance)
+
     if improve_submitted:
         preserve_page_inputs()
         if not original_email.strip():
             st.error("请先粘贴需要优化的英文邮件。")
         elif len(original_email) > MAX_INPUT_CHARS:
             st.error(f"原始英文邮件不能超过 {MAX_INPUT_CHARS} 个字符。")
+        elif (
+            improve_risk_assessment.requires_confirmation
+            and not improve_high_risk_confirmed
+        ):
+            st.error("检测到高风险内容。请先完成人工检查并勾选确认后再提交。")
         elif st.session_state.request_in_progress:
             st.warning("当前请求正在处理中，请稍候。")
         else:
@@ -921,6 +1272,14 @@ else:
                     result = DeepSeekEmailService(settings).improve_email(
                         original_email=original_email,
                         tone=improve_tone,
+                        country_region=(
+                            improve_custom_region.strip()
+                            if improve_country_region == "其他 / Other"
+                            else improve_country_region
+                        ),
+                        localization_context=localization_context(
+                            improve_guidance
+                        ),
                         sender=sender_details(
                             sender_name,
                             job_title,
@@ -932,6 +1291,9 @@ else:
                 st.session_state.improved_body = result.body
                 st.session_state.improved_subject_editor = result.subject
                 st.session_state.improved_body_editor = result.body
+                st.session_state.improved_analysis = (
+                    result.communication_analysis
+                )
                 st.session_state.improved = True
                 st.session_state.deepseek_connected = True
                 st.session_state.last_request_duration = (
@@ -948,6 +1310,7 @@ else:
             st.session_state.improved_subject_editor = st.session_state.improved_subject
         if "improved_body_editor" not in st.session_state:
             st.session_state.improved_body_editor = st.session_state.improved_body
+        render_communication_analysis(st.session_state.improved_analysis)
         st.markdown(
             """
             <div class="result-wrap">
@@ -1003,16 +1366,49 @@ else:
             unsafe_allow_html=True,
         )
 
+render_examples()
+
+with st.expander("如何使用 · How to Use", expanded=False):
+    st.markdown(
+        """
+        1. 选择“写英文邮件”或“优化英文邮件”。
+        2. 填写收件人、国家或地区、沟通背景及行动要求。
+        3. 检查信息安全和保密提示。
+        4. 选择合适的商务语气。
+        5. 生成后查看商务沟通分析。
+        6. 核对姓名、日期、金额、承诺和项目敏感信息。
+        7. 人工确认后再复制发送。
+
+        输入越完整，生成结果通常越准确。建议说明沟通背景、沟通对象、
+        需要对方采取的行动、截止时间和语气要求。
+        """
+    )
+
+with st.expander("使用与安全说明 · Usage & Security Notice", expanded=False):
+    st.markdown(
+        """
+        - 本工具为 AI 辅助商务沟通工具，生成内容可能存在错误或遗漏。
+        - 用户必须在发送前人工审核。
+        - 不应输入密码、银行账号、身份证件、API Key 或其他敏感凭证。
+        - 涉及客户、合同、价格、项目或公司内部信息时，应遵守公司保密制度。
+        - 风险提示不代表内容已经通过公司信息安全、法务或管理审批。
+        - 系统当前不主动持久化保存用户输入和生成结果。
+        - 是否可以使用第三方 AI 服务处理特定信息，应以公司政策为准。
+        """
+    )
+
 if not settings.is_configured:
-    footer_status = "Leon AI · 尚未配置AI服务"
+    footer_status = f"Leon AI · V{APP_VERSION} · 尚未配置AI服务"
     footer_english = "DeepSeek API Key Not Configured"
     service_state = "未配置"
 elif st.session_state.deepseek_connected:
-    footer_status = "Leon AI · DeepSeek AI 驱动 · DeepSeek AI已连接"
+    footer_status = (
+        f"Leon AI · V{APP_VERSION} · DeepSeek AI 驱动 · DeepSeek AI已连接"
+    )
     footer_english = "Powered by DeepSeek API"
     service_state = "连接成功"
 else:
-    footer_status = "Leon AI · DeepSeek AI 驱动"
+    footer_status = f"Leon AI · V{APP_VERSION} · DeepSeek AI 驱动"
     footer_english = "Powered by DeepSeek API"
     service_state = "已配置"
 
@@ -1061,12 +1457,3 @@ st.markdown(
     ),
     unsafe_allow_html=True,
 )
-
-with st.expander("隐私与测试说明", expanded=False):
-    st.markdown(
-        """
-        - 本工具会将用户输入发送至 DeepSeek API，以生成或优化英文邮件。
-        - 请勿输入密码、身份证号、银行卡、商业秘密或其他高度敏感信息。
-        - 测试阶段生成结果仅供参考，发送前请人工检查。
-        """
-    )

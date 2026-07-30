@@ -1,27 +1,41 @@
-# Leon AI — 英文商务写作助手
+# Leon AI — AI商务沟通优化助手
 
-面向中国职场人员、外贸人员和工程项目人员的 Streamlit 英文商务邮件助手。应用通过 DeepSeek API 生成或优化专业英文邮件，并提供动态签名、结构化输出、中文错误提示和可选测试访问码。
+**AI Business Communication Optimization Assistant · V1.0 · 2026-07-30**
 
-## 当前版本
+帮助职场人士更安全、专业、高效地完成国际商务沟通。应用保留英文商务邮件生成与优化能力，并增加本地敏感内容提示、本地化称谓建议和商务沟通质量分析。
 
-**Beta 0.9 · 2026-07-29**
+## 产品定位
 
-当前线上版本已部署至 Streamlit Community Cloud，仅面向受邀用户进行测试。测试版本提供英文邮件生成与优化功能，但尚未开放正式用户注册、支付、订阅和使用额度管理。请勿输入高度敏感信息，生成结果发送前请人工检查。
+Leon AI 面向中国职场人员、外贸人员和工程项目人员。用户可以用中文描述商务需求，或粘贴已有英文邮件，通过 DeepSeek API 获得可编辑的英文邮件和辅助分析。
 
-## 主要功能
+本工具不是法律、信息安全或管理审批系统。风险提示和 AI 输出均需人工确认。
 
-- 根据中文需求生成英文商务邮件
-- 优化已有英文邮件并保留事实、立场和核心意思
-- 支持正式、友好、明确强硬、简洁和高管简洁等语气
-- 自定义发件人姓名、职位、公司和联系方式
-- 由 Python 本地逻辑生成签名
-- 显示安全的 AI 服务状态、耗时和可用 token 用量
-- 提供 8000 字符限制、重复请求保护和一次 JSON 修复重试
-- 提供可选的小范围测试访问码
+## 核心功能
 
-## 1. 本地运行
+- 根据中文需求生成专业英文商务邮件
+- 优化已有英文邮件并保留原始事实和立场
+- Formal、Friendly、Strong、Executive 商务语气
+- 自定义收件人、主题、发件人和动态邮件签名
+- 收件人国家或地区、本地化称谓及跨文化沟通建议
+- 提交前本地敏感内容检查和高风险确认
+- 商务沟通目的、行动要求、截止时间、语气、承诺及歧义分析
+- 可编辑及复制邮件主题和正文
+- AI 服务状态、耗时和可用 Token 用量
+- 四个可一键填充且不会自动调用 AI 的案例
+- 可选测试访问码及 Streamlit Community Cloud 支持
 
-推荐使用 Python 3.12：
+## V1.0 新增能力
+
+- 产品定位从“邮件写作”升级为“商务沟通质量分析与优化”
+- 增加敏感凭证、个人信息、保密内容和商务承诺的本地规则提示
+- 高风险输入默认不提交，用户确认可提交后才调用 AI
+- 增加 11 个国家或地区选项及审慎的称谓建议
+- 在同一次 DeepSeek 请求中返回结构化商务沟通分析，避免额外分析费用
+- 支持非 JSON 邮件正文安全降级，分析不可用时提示人工检查
+
+## 本地运行
+
+推荐 Python 3.12：
 
 ```bash
 python3.12 -m venv .venv
@@ -30,19 +44,17 @@ python -m pip install -r requirements.txt
 streamlit run app.py
 ```
 
-然后访问 `http://127.0.0.1:8501`。
+访问 `http://127.0.0.1:8501`。
 
-运行自动化测试：
+运行测试：
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-测试使用模拟 DeepSeek 客户端，不会产生真实 API 费用。
+自动化测试会 mock DeepSeek 客户端，不会产生真实 API 费用。
 
-## 2. 本地 Secrets 配置
-
-复制安全示例：
+## 本地 Secrets 配置
 
 ```bash
 cp .streamlit/secrets.toml.example .streamlit/secrets.toml
@@ -57,11 +69,20 @@ DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 APP_ACCESS_CODE = "choose-a-test-access-code"
 ```
 
-`APP_ACCESS_CODE` 可选。未配置时本地开发不受阻断，并显示“测试访问保护尚未启用”。不要将 `.streamlit/secrets.toml` 上传到 GitHub。
+`APP_ACCESS_CODE` 可选。不要把 `.streamlit/secrets.toml` 上传到 GitHub，也不要把真实密钥写入 Python 或 Markdown 文件。
 
-## 3. GitHub 上传前检查
+## Streamlit Community Cloud 部署
 
-执行：
+1. 将安全检查后的项目推送到 GitHub。
+2. 在 Streamlit Community Cloud 创建应用。
+3. 选择仓库、`main` 分支和入口文件 `app.py`。
+4. 在高级设置选择 Python 3.12。
+5. 在平台 Secrets 设置中粘贴与本地相同结构的 TOML 配置。
+6. 部署后验证访问门禁、生成、优化、状态区和移动端布局。
+
+`runtime.txt` 同时记录 `python-3.12`；如平台不再以该文件控制版本，请以部署高级设置为准。
+
+## GitHub 上传前检查
 
 ```bash
 git status --short
@@ -69,91 +90,22 @@ git check-ignore .streamlit/secrets.toml .env .venv
 git ls-files .streamlit/secrets.toml .env
 ```
 
-最后一条命令应没有输出。确认仓库中只包含 `.streamlit/secrets.toml.example`，不包含真实 Secrets、虚拟环境、缓存或测试覆盖率文件。
+最后一条命令应无输出。仓库中只能提交 `.streamlit/secrets.toml.example`，不能提交真实 Secrets、虚拟环境、缓存或覆盖率文件。
 
-## 4. Streamlit Community Cloud 部署
+## 安全注意事项
 
-1. 在 GitHub 创建空仓库并推送本项目。
-2. 登录 Streamlit Community Cloud，选择 **Create app**。
-3. 选择 GitHub 仓库和 `main` 分支。
-4. 入口文件填写 `app.py`。
-5. 在 **Advanced settings** 中选择 Python 3.12。
-6. 配置云端 Secrets 后部署。
+- 用户只有主动点击生成或优化时，输入才会发送至 DeepSeek API。
+- 不要输入密码、验证码、银行账号、身份证件、API Key 等敏感凭证。
+- 涉及客户、合同、价格、项目或公司内部信息时，应遵守公司保密制度。
+- 本地风险检查只提供辅助提示，不能保证发现全部敏感内容。
+- 系统当前不主动将输入、分析结果或生成结果写入数据库或项目文件。
+- 是否可由第三方 AI 服务处理特定信息，应以用户所在公司的政策为准。
+- 页面不会显示 API Key、访问码、系统路径、服务器 IP 或完整内部异常。
 
-项目提供 `runtime.txt` 作为运行版本说明。Community Cloud 当前主要通过部署页面的 **Advanced settings** 选择 Python 版本；部署后如需更换 Python 版本，通常需要重新部署应用。
+## 已知限制
 
-## 5. 云端 Secrets 配置
-
-在 Community Cloud 的应用设置中打开 Secrets，将本地 Secrets 的 TOML 配置粘贴进去：
-
-```toml
-DEEPSEEK_API_KEY = "your-deepseek-api-key"
-DEEPSEEK_MODEL = "deepseek-v4-flash"
-DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-APP_ACCESS_CODE = "choose-a-test-access-code"
-```
-
-不要把真实 `secrets.toml` 提交到 GitHub。云端 Secrets 由 Streamlit 平台单独保存。
-
-## 6. 测试访问码设置
-
-- 配置 `APP_ACCESS_CODE` 后，首次访问会显示中文验证页。
-- 正确输入后，当前 Streamlit session 会保持通过状态。
-- 错误访问码不会进入主应用，也不会调用 DeepSeek。
-- 访问码不会写入日志或业务代码。
-- 这只是小范围外部测试门禁，不是正式身份认证，不适合保护高价值或高度敏感数据。
-
-## 7. 部署后验证
-
-部署完成后依次检查：
-
-1. 未验证访问码时无法看到主应用。
-2. 错误访问码被拒绝，正确访问码可以进入。
-3. 页面显示“运行环境：云端部署”。
-4. 生成和优化邮件各测试一次。
-5. AI 服务状态能显示连接成功和请求耗时。
-6. 邮件正文没有默认发件人姓名。
-7. 日志中没有 API Key、访问码、用户邮件内容或完整异常堆栈。
-
-## 8. 常见部署错误
-
-### 缺少 DeepSeek API Key
-
-检查 Community Cloud 的 Secrets 设置，不要将密钥写入代码。
-
-### 模型不可用或余额不足
-
-确认 `DEEPSEEK_MODEL` 仍是当前可用模型，并检查 DeepSeek 账户额度。
-
-### 依赖安装失败
-
-确认仓库根目录存在 `requirements.txt`，并在高级设置中选择 Python 3.12。
-
-### 修改 Python 版本没有生效
-
-Community Cloud 的 Python 版本在部署时选择。必要时记录应用配置后删除并重新部署。
-
-### 修改 Secrets 后页面未更新
-
-保存云端 Secrets，然后重启应用。
-
-## 9. 更新应用的方法
-
-完成本地修改和测试后：
-
-```bash
-git add .
-git commit -m "describe your update"
-git push
-```
-
-Community Cloud 会检测 GitHub 仓库的新提交并更新应用。推送前始终重新运行测试和 Secrets 跟踪检查。
-
-## 安全与隐私
-
-- 用户主动生成或优化邮件时，输入内容会发送至 DeepSeek API。
-- 不要输入密码、身份证号、银行卡、商业秘密或其他高度敏感信息。
-- AI 结果仅供参考，发送前应人工检查。
-- 应用不会在打开页面时自动调用 API。
-- 页面不会显示 API Key、访问码、系统路径、服务器 IP 或内部环境变量。
-- `Leon AI` 仅是产品品牌，不会成为默认发件人姓名。
+- 当前仍是邀请测试版本，测试访问码不是正式身份认证。
+- AI 输出与风险分析可能存在错误、遗漏或误判，发送前必须人工审核。
+- 本地化建议不能替代对方名片、邮件签名及正式公司资料。
+- 暂无用户注册、支付、额度、历史记录、企业知识库和管理后台。
+- DeepSeek 服务可用性和输出质量受账户额度、模型状态与输入完整度影响。

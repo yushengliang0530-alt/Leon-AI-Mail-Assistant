@@ -1,5 +1,29 @@
 # Changelog
 
+## V1.0 — 2026-07-30
+
+### Changed
+
+- Renamed the product to AI Business Communication Optimization Assistant
+- Upgraded the product positioning from email writing to business communication optimization
+- Improved page structure and product introduction
+
+### Added
+
+- Added confidentiality and sensitive-content risk guidance
+- Added recipient country and region selection
+- Added localized salutation and cross-cultural communication guidance
+- Added business communication quality analysis
+- Added interactive business communication examples
+- Added clearer usage and security guidance
+
+### Security
+
+- Added local sensitive-content checks
+- Added confirmation before processing potentially high-risk content
+- User inputs and generated results are not intentionally stored
+- Risk analysis is advisory and does not replace company policies or human review
+
 ## Beta 0.9 — 2026-07-29
 
 ### Added

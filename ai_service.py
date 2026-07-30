@@ -18,6 +18,10 @@ from openai import (
 )
 
 from config import DeepSeekSettings
+from communication_analysis_service import (
+    CommunicationAnalysis,
+    parse_communication_analysis,
+)
 from prompts import generation_messages, improvement_messages, repair_messages
 
 
@@ -47,6 +51,7 @@ class EmailResult:
     subject: str
     body: str
     usage_tokens: int | None = None
+    communication_analysis: CommunicationAnalysis = CommunicationAnalysis()
 
 
 @dataclass(frozen=True)
@@ -113,12 +118,61 @@ def parse_email_result(content: str) -> EmailResult:
         raise ValueError("response is not an object")
 
     subject = data.get("subject")
-    body = data.get("body")
+    body = data.get("body", data.get("email_body"))
     if not isinstance(subject, str) or not subject.strip():
         raise ValueError("missing subject")
     if not isinstance(body, str) or not body.strip():
         raise ValueError("missing body")
-    return EmailResult(subject=subject.strip(), body=body.strip())
+    return EmailResult(
+        subject=subject.strip(),
+        body=body.strip(),
+        communication_analysis=parse_communication_analysis(
+            data.get("communication_analysis")
+        ),
+    )
+
+
+def parse_email_fallback(content: str) -> EmailResult:
+    """Extract recognizable plain-email output without exposing broken JSON."""
+    candidate = content.strip()
+    candidate = re.sub(r"^```(?:json|text)?\s*", "", candidate, flags=re.I)
+    candidate = re.sub(r"\s*```$", "", candidate).strip()
+    if not candidate or candidate.startswith("{") or candidate.startswith("["):
+        raise ValueError("unsafe fallback content")
+
+    subject_match = re.search(
+        r"(?im)^\s*subject\s*:\s*(.+?)\s*$",
+        candidate,
+    )
+    body_match = re.search(
+        r"(?is)(?:^|\n)\s*(?:body|email body)\s*:\s*(.+)$",
+        candidate,
+    )
+    if body_match:
+        body = body_match.group(1).strip()
+        subject = (
+            subject_match.group(1).strip()
+            if subject_match
+            else "Business Email"
+        )
+    elif re.search(r"(?im)^\s*(?:dear|hello|hi)\b", candidate):
+        subject = (
+            subject_match.group(1).strip()
+            if subject_match
+            else "Business Email"
+        )
+        body = re.sub(
+            r"(?im)^\s*subject\s*:\s*.+?\s*$",
+            "",
+            candidate,
+            count=1,
+        ).strip()
+    else:
+        raise ValueError("no recognizable email")
+
+    if not body:
+        raise ValueError("empty fallback body")
+    return EmailResult(subject=subject, body=body)
 
 
 def create_client(settings: DeepSeekSettings) -> OpenAI:
@@ -233,6 +287,7 @@ class DeepSeekEmailService:
                 subject=parsed.subject,
                 body=parsed.body,
                 usage_tokens=first_completion.usage_tokens,
+                communication_analysis=parsed.communication_analysis,
             )
         except (json.JSONDecodeError, ValueError):
             logger.warning("DeepSeek response parsing failed; attempting one repair")
@@ -240,26 +295,36 @@ class DeepSeekEmailService:
         repaired_completion = self._completion(
             repair_messages(first_completion.content)
         )
+        token_values = [
+            value
+            for value in (
+                first_completion.usage_tokens,
+                repaired_completion.usage_tokens,
+            )
+            if value is not None
+        ]
         try:
             parsed = parse_email_result(repaired_completion.content)
-            token_values = [
-                value
-                for value in (
-                    first_completion.usage_tokens,
-                    repaired_completion.usage_tokens,
-                )
-                if value is not None
-            ]
             return EmailResult(
                 subject=parsed.subject,
                 body=parsed.body,
                 usage_tokens=sum(token_values) if token_values else None,
+                communication_analysis=parsed.communication_analysis,
             )
         except (json.JSONDecodeError, ValueError):
-            raise AIServiceError(
-                "AI返回结果格式异常，请重新生成。",
-                "parse_error",
-            ) from None
+            try:
+                fallback = parse_email_fallback(first_completion.content)
+                return EmailResult(
+                    subject=fallback.subject,
+                    body=fallback.body,
+                    usage_tokens=sum(token_values) if token_values else None,
+                    communication_analysis=fallback.communication_analysis,
+                )
+            except ValueError:
+                raise AIServiceError(
+                    "AI返回结果格式异常，请重新生成。",
+                    "parse_error",
+                ) from None
 
     def generate_email(
         self,
@@ -269,6 +334,8 @@ class DeepSeekEmailService:
         chinese_brief: str,
         tone: str,
         sender: SenderDetails,
+        country_region: str = "",
+        localization_context: str = "",
     ) -> EmailResult:
         result = self._request_and_parse(
             generation_messages(
@@ -276,12 +343,15 @@ class DeepSeekEmailService:
                 requested_subject=requested_subject,
                 chinese_brief=chinese_brief,
                 tone=tone,
+                country_region=country_region,
+                localization_context=localization_context,
             )
         )
         return EmailResult(
             subject=result.subject,
             body=append_signature(result.body, tone, sender),
             usage_tokens=result.usage_tokens,
+            communication_analysis=result.communication_analysis,
         )
 
     def improve_email(
@@ -290,15 +360,20 @@ class DeepSeekEmailService:
         original_email: str,
         tone: str,
         sender: SenderDetails,
+        country_region: str = "",
+        localization_context: str = "",
     ) -> EmailResult:
         result = self._request_and_parse(
             improvement_messages(
                 original_email=original_email,
                 tone=tone,
+                country_region=country_region,
+                localization_context=localization_context,
             )
         )
         return EmailResult(
             subject=result.subject,
             body=append_signature(result.body, tone, sender),
             usage_tokens=result.usage_tokens,
+            communication_analysis=result.communication_analysis,
         )

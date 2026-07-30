@@ -33,12 +33,22 @@ TONE_GUIDANCE = {
 
 
 JSON_SYSTEM_PROMPT = """
-You are an expert English business email writer.
+You are an expert English business communication editor.
 
-Return only one valid JSON object with exactly these string fields:
+Return only one valid JSON object with this structure:
 {
   "subject": "English subject",
-  "body": "English email body without a closing or signature"
+  "body": "English email body without a closing or signature",
+  "communication_analysis": {
+    "purpose": "Good, Check recommended, or Revision needed with a short reason",
+    "action_required": "short assessment",
+    "deadline": "short assessment",
+    "tone": "short assessment",
+    "commitment_risk": "short advisory assessment",
+    "ambiguity_risk": "short advisory assessment",
+    "localization_note": "short advisory note",
+    "improvement_suggestions": ["short actionable suggestion"]
+  }
 }
 
 Rules:
@@ -54,6 +64,10 @@ Rules:
 - Do not add any closing phrase, sender name, job title, company, contact
   information, or signature. The application adds the signature locally.
 - Never add "Leon" or infer a sender identity from the product brand.
+- Treat communication analysis as advisory. Do not claim legal, security, or
+  cultural certainty and do not use percentages.
+- Localization guidance must avoid stereotypes and must not infer gender,
+  religion, ethnicity, marital status, or unprovided titles from a name.
 """.strip()
 
 
@@ -63,12 +77,16 @@ def generation_messages(
     requested_subject: str,
     chinese_brief: str,
     tone: str,
+    country_region: str = "",
+    localization_context: str = "",
 ) -> list[dict[str, str]]:
     payload = {
         "recipient": recipient.strip() or None,
         "requested_subject": requested_subject.strip() or None,
         "chinese_brief": chinese_brief.strip(),
         "tone": tone,
+        "recipient_country_or_region": country_region.strip() or None,
+        "localization_context": localization_context.strip() or None,
     }
     user_prompt = f"""
 Write a natural, concise English business email from the supplied Chinese brief.
@@ -90,7 +108,9 @@ Tone guidance:
 Input data:
 {json.dumps(payload, ensure_ascii=False, indent=2)}
 
-Return JSON with "subject" and "body" only.
+Also provide concise advisory communication_analysis. Assess purpose, action
+required, deadline, tone, commitment risk, ambiguity risk, localization, and no
+more than three improvement suggestions. Do not invent missing facts.
 """.strip()
     return [
         {"role": "system", "content": JSON_SYSTEM_PROMPT},
@@ -102,10 +122,14 @@ def improvement_messages(
     *,
     original_email: str,
     tone: str,
+    country_region: str = "",
+    localization_context: str = "",
 ) -> list[dict[str, str]]:
     payload = {
         "original_email": original_email.strip(),
         "target_tone": tone,
+        "recipient_country_or_region": country_region.strip() or None,
+        "localization_context": localization_context.strip() or None,
     }
     user_prompt = f"""
 Improve the English business email below.
@@ -132,7 +156,9 @@ Tone guidance:
 Input data:
 {json.dumps(payload, ensure_ascii=False, indent=2)}
 
-Return JSON with "subject" and "body" only.
+Also provide concise advisory communication_analysis. Assess purpose, action
+required, deadline, tone, commitment risk, ambiguity risk, localization, and no
+more than three improvement suggestions. Do not invent missing facts.
 """.strip()
     return [
         {"role": "system", "content": JSON_SYSTEM_PROMPT},
@@ -146,7 +172,8 @@ def repair_messages(raw_content: str) -> list[dict[str, str]]:
             "role": "system",
             "content": (
                 "Convert the supplied content into valid JSON only. Return exactly "
-                'two string fields: {"subject": "...", "body": "..."}. '
+                'the email fields "subject" and "body", plus a '
+                '"communication_analysis" object when analysis is recoverable. '
                 "Do not add or change facts. Do not use Markdown."
             ),
         },
