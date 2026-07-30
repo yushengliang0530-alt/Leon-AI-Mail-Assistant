@@ -14,6 +14,7 @@ from access_control import (
 from ai_service import AIServiceError, DeepSeekEmailService, SenderDetails
 from communication_analysis_service import CommunicationAnalysis
 from config import (
+    APP_VERSION_LABEL,
     APP_VERSION,
     MAX_INPUT_CHARS,
     PRODUCT_NAME_EN,
@@ -31,9 +32,11 @@ from localization_service import (
     LocalizationGuidance,
     build_localization_guidance,
 )
+from ui.pages.home import render_home
+from ui.state import get_home_view, initialize_home_state, return_to_home
 
 st.set_page_config(
-    page_title=f"Leon AI · {PRODUCT_NAME_ZH} · V{APP_VERSION}",
+    page_title=f"Leon AI · {PRODUCT_NAME_ZH} · {APP_VERSION_LABEL}",
     page_icon="✦",
     layout="centered",
     initial_sidebar_state="collapsed",
@@ -876,6 +879,8 @@ for state_key, default_value in SESSION_DEFAULTS.items():
     if state_key not in st.session_state:
         st.session_state[state_key] = default_value
 
+initialize_home_state()
+
 
 PAGE_WIDGETS = {
     "generate_recipient": "saved_generate_recipient",
@@ -899,6 +904,23 @@ def restore_page_inputs(widget_keys: list[str]) -> None:
         saved_key = PAGE_WIDGETS[widget_key]
         if widget_key not in st.session_state:
             st.session_state[widget_key] = st.session_state[saved_key]
+
+
+if get_home_view() == "home":
+    home_service_status = "已配置" if settings.is_configured else "未配置"
+    render_home(
+        ai_service_status=home_service_status,
+        environment_label=environment_label,
+        access_protection_label=access_protection_label,
+    )
+    st.stop()
+
+st.button(
+    "← 返回工作台",
+    key="legacy__return_home",
+    on_click=return_to_home,
+)
+st.caption("V1.0 兼容功能 · 当前打开：优化已有草稿")
 
 
 st.markdown(
@@ -1013,6 +1035,7 @@ if active_page == "写英文邮件":
         sender_name, job_title, company, contact_information = sender_fields()
         submitted = st.form_submit_button(
             "生成英文邮件",
+            key="legacy__generate_submit",
             type="primary",
             use_container_width=True,
             disabled=st.session_state.request_in_progress,
@@ -1213,6 +1236,7 @@ else:
         sender_name, job_title, company, contact_information = sender_fields()
         improve_submitted = st.form_submit_button(
             "优化英文邮件",
+            key="legacy__improve_submit",
             type="primary",
             use_container_width=True,
             disabled=st.session_state.request_in_progress,

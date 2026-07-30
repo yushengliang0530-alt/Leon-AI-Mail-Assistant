@@ -10,9 +10,15 @@ DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_TIMEOUT_SECONDS = 45.0
 DEFAULT_MAX_TOKENS = 1600
 MAX_INPUT_CHARS = 8000
-APP_VERSION = "1.0"
-PRODUCT_NAME_ZH = "AI商务沟通优化助手"
-PRODUCT_NAME_EN = "AI Business Communication Optimization Assistant"
+APP_BRAND = "Leon AI"
+APP_NAME_ZH = "AI商务邮件工作台"
+APP_NAME_EN = "AI Business Email Workspace"
+APP_VERSION = "2.0-dev"
+APP_VERSION_LABEL = "V2.0 Development"
+
+# Compatibility aliases for the V1.0 page while Phase 1 is introduced.
+PRODUCT_NAME_ZH = APP_NAME_ZH
+PRODUCT_NAME_EN = APP_NAME_EN
 
 
 @dataclass(frozen=True)
