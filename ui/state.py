@@ -11,6 +11,12 @@ COMPOSE_DEFAULTS = {
     "compose__scenario_family": "follow_up_supplier",
     "compose__task_id": "",
     "compose__step": 1,
+    "compose__question_index": 0,
+    "compose__answers": {},
+    "compose__completed_questions": (),
+    "compose__review_ready": False,
+    "compose__review_confirmed": False,
+    "compose__edit_field_key": "",
     "compose__fields": {},
     "compose__result_subject": "",
     "compose__result_body": "",
@@ -55,10 +61,16 @@ def open_supplier_workflow() -> None:
 
 def set_compose_task(task_id: str) -> None:
     previous = str(st.session_state.get("compose__task_id", ""))
-    if previous and previous != task_id:
+    if previous != task_id:
         for key in tuple(st.session_state):
-            if key.startswith("compose__field__"):
+            if key.startswith("compose__answer_widget__"):
                 del st.session_state[key]
+        st.session_state["compose__question_index"] = 0
+        st.session_state["compose__answers"] = {}
+        st.session_state["compose__completed_questions"] = ()
+        st.session_state["compose__review_ready"] = False
+        st.session_state["compose__review_confirmed"] = False
+        st.session_state["compose__edit_field_key"] = ""
         st.session_state["compose__fields"] = {}
         st.session_state["compose__result_subject"] = ""
         st.session_state["compose__result_body"] = ""
@@ -69,7 +81,61 @@ def set_compose_task(task_id: str) -> None:
 
 
 def set_compose_step(step: int) -> None:
-    st.session_state["compose__step"] = max(1, min(3, int(step)))
+    st.session_state["compose__step"] = max(1, min(4, int(step)))
+    st.session_state["compose__error"] = ""
+
+
+def save_compose_answer(field_key: str, value: str, *, completed: bool) -> None:
+    answers = dict(st.session_state.get("compose__answers", {}))
+    clean_value = str(value).strip()
+    if clean_value:
+        answers[field_key] = clean_value
+    else:
+        answers.pop(field_key, None)
+    st.session_state["compose__answers"] = answers
+
+    completed_keys = list(
+        st.session_state.get("compose__completed_questions", ())
+    )
+    if completed and field_key not in completed_keys:
+        completed_keys.append(field_key)
+    st.session_state["compose__completed_questions"] = tuple(completed_keys)
+    st.session_state["compose__review_confirmed"] = False
+    st.session_state["compose__result_subject"] = ""
+    st.session_state["compose__result_body"] = ""
+    st.session_state["compose__analysis"] = None
+
+
+def advance_compose_question(total_questions: int) -> None:
+    current = int(st.session_state.get("compose__question_index", 0))
+    if current + 1 >= total_questions:
+        st.session_state["compose__review_ready"] = True
+        st.session_state["compose__step"] = 3
+    else:
+        st.session_state["compose__question_index"] = current + 1
+    st.session_state["compose__error"] = ""
+
+
+def back_compose_question() -> None:
+    current = int(st.session_state.get("compose__question_index", 0))
+    if current <= 0:
+        st.session_state["compose__step"] = 1
+    else:
+        st.session_state["compose__question_index"] = current - 1
+    st.session_state["compose__error"] = ""
+
+
+def edit_compose_answer(field_key: str, question_index: int) -> None:
+    st.session_state["compose__edit_field_key"] = field_key
+    st.session_state["compose__question_index"] = question_index
+    st.session_state["compose__step"] = 2
+    st.session_state["compose__error"] = ""
+
+
+def return_to_compose_review() -> None:
+    st.session_state["compose__edit_field_key"] = ""
+    st.session_state["compose__review_ready"] = True
+    st.session_state["compose__step"] = 3
     st.session_state["compose__error"] = ""
 
 

@@ -103,35 +103,80 @@ class StreamlitAppTests(unittest.TestCase):
                 )
             self.assertEqual(generate_mock.call_count, 0)
 
-    def test_supplier_dynamic_fields_and_advanced_options(self) -> None:
+    def answer_supplier_question(
+        self,
+        app: AppTest,
+        field_key: str,
+        value: str,
+        *,
+        textarea: bool = False,
+    ) -> AppTest:
+        widget_key = f"compose__answer_widget__{field_key}"
+        widget = (
+            app.text_area(key=widget_key)
+            if textarea
+            else app.text_input(key=widget_key)
+        )
+        widget.set_value(value)
+        app.button(key="compose__question_next").click().run(timeout=10)
+        self.assertFalse(list(app.exception))
+        return app
+
+    def complete_quotation_questions(self, app: AppTest) -> AppTest:
+        self.answer_supplier_question(
+            app,
+            "supplier_name",
+            "ABC Components",
+        )
+        self.answer_supplier_question(
+            app,
+            "quotation_scope",
+            "Control panels",
+            textarea=True,
+        )
+        app.button(key="compose__question_skip").click().run(timeout=10)
+        app.button(key="compose__question_skip").click().run(timeout=10)
+        app.button(key="compose__question_skip").click().run(timeout=10)
+        self.answer_supplier_question(
+            app,
+            "requested_reply",
+            "By Friday",
+        )
+        app.button(key="compose__question_skip").click().run(timeout=10)
+        self.answer_supplier_question(
+            app,
+            "required_action",
+            "Send the formal quotation.",
+            textarea=True,
+        )
+        self.assertEqual(app.session_state["compose__step"], 3)
+        return app
+
+    def test_supplier_questions_appear_in_order_and_advanced_is_review_only(
+        self,
+    ) -> None:
         app = self.create_supplier_workflow()
         app.button(key="compose__task__supplier_plan_update").click().run(
             timeout=10
         )
         self.assertIsNotNone(
-            app.text_input(key="compose__field__supplier_name")
-        )
-        self.assertIsNotNone(
-            app.text_input(key="compose__field__original_plan_date")
-        )
-        self.assertIsNotNone(
-            app.text_area(key="compose__field__current_situation")
-        )
-        self.assertIsNotNone(
-            app.text_area(key="compose__field__required_action")
+            app.text_input(key="compose__answer_widget__supplier_name")
         )
         self.assertNotIn(
-            "compose__field__quotation_scope",
-            {item.key for item in app.text_area},
+            "compose__answer_widget__original_plan_date",
+            {item.key for item in app.text_input},
         )
-        self.assertTrue(
-            any(
-                "高级选项" in expander.label
-                for expander in app.expander
-            )
+        self.answer_supplier_question(
+            app,
+            "supplier_name",
+            "ABC Components",
         )
+        self.assertIsNotNone(
+            app.text_input(key="compose__answer_widget__project_name")
+        )
+        self.assertFalse(any("高级选项" in item.label for item in app.expander))
 
-    def test_supplier_missing_required_fact_does_not_call_ai(self) -> None:
+    def test_supplier_required_question_cannot_be_skipped(self) -> None:
         app = self.create_supplier_workflow()
         app.button(key="compose__task__supplier_quotation").click().run(
             timeout=10
@@ -139,28 +184,67 @@ class StreamlitAppTests(unittest.TestCase):
         with patch(
             "ai_service.DeepSeekEmailService.generate_scenario_email",
         ) as generate_mock:
-            app.button(key="compose__generate").click().run(timeout=10)
+            app.button(key="compose__question_next").click().run(timeout=10)
             self.assertEqual(generate_mock.call_count, 0)
             self.assertTrue(
-                any("请填写供应商名称" in error.value for error in app.error)
+                any(
+                    "请先回答：供应商名称" in error.value
+                    for error in app.error
+                )
             )
+            self.assertEqual(app.session_state["compose__question_index"], 0)
 
-    def test_supplier_generate_click_calls_ai_once_and_keeps_result(self) -> None:
+    def test_supplier_back_preserves_answer(self) -> None:
+        app = self.create_supplier_workflow()
+        app.button(key="compose__task__supplier_plan_update").click().run(
+            timeout=10
+        )
+        self.answer_supplier_question(
+            app,
+            "supplier_name",
+            "ABC Components"
+        )
+        self.answer_supplier_question(
+            app,
+            "project_name",
+            "North Plant Upgrade",
+        )
+        app.button(key="compose__question_back").click().run(timeout=10)
+        self.assertEqual(
+            app.text_input(
+                key="compose__answer_widget__project_name"
+            ).value,
+            "North Plant Upgrade",
+        )
+
+    def test_supplier_review_is_correct_and_editable(self) -> None:
         app = self.create_supplier_workflow()
         app.button(key="compose__task__supplier_quotation").click().run(
             timeout=10
         )
-        app.text_input(key="compose__field__supplier_name").set_value(
-            "ABC Components"
-        )
-        app.text_area(key="compose__field__quotation_scope").set_value(
-            "Control panels"
-        )
-        app.text_input(key="compose__field__requested_reply").set_value(
-            "By Friday"
-        )
-        app.text_area(key="compose__field__required_action").set_value(
-            "Send the formal quotation."
+        self.complete_quotation_questions(app)
+        rendered = "\n".join(item.value for item in app.markdown)
+        self.assertIn("本次商务沟通信息", rendered)
+        self.assertIn("ABC Components", rendered)
+        self.assertIn("Control panels", rendered)
+        self.assertNotIn("项目名称</div>", rendered)
+        self.assertTrue(any("高级选项" in item.label for item in app.expander))
+
+        app.button(
+            key="compose__review_edit__supplier_name"
+        ).click().run(timeout=10)
+        app.text_input(
+            key="compose__answer_widget__supplier_name"
+        ).set_value("XYZ Components")
+        app.button(key="compose__question_next").click().run(timeout=10)
+        rendered = "\n".join(item.value for item in app.markdown)
+        self.assertIn("XYZ Components", rendered)
+        self.assertNotIn("ABC Components", rendered)
+
+    def test_supplier_generate_calls_ai_once_only_after_review(self) -> None:
+        app = self.create_supplier_workflow()
+        app.button(key="compose__task__supplier_quotation").click().run(
+            timeout=10
         )
         mocked = EmailResult(
             subject="Quotation Follow-up",
@@ -171,6 +255,8 @@ class StreamlitAppTests(unittest.TestCase):
             "ai_service.DeepSeekEmailService.generate_scenario_email",
             return_value=mocked,
         ) as generate_mock:
+            self.complete_quotation_questions(app)
+            self.assertEqual(generate_mock.call_count, 0)
             app.button(key="compose__generate").click().run(timeout=10)
             self.assertFalse(list(app.exception))
             self.assertEqual(generate_mock.call_count, 1)
@@ -180,6 +266,37 @@ class StreamlitAppTests(unittest.TestCase):
             )
             app.run(timeout=10)
             self.assertEqual(generate_mock.call_count, 1)
+
+    def test_supplier_review_edit_can_generate_updated_email(self) -> None:
+        app = self.create_supplier_workflow()
+        app.button(key="compose__task__supplier_quotation").click().run(
+            timeout=10
+        )
+        mocked = EmailResult(
+            subject="Updated Quotation Follow-up",
+            body="Please send the updated quotation.\n\nBest regards,",
+        )
+        with patch(
+            "ai_service.DeepSeekEmailService.generate_scenario_email",
+            return_value=mocked,
+        ) as generate_mock:
+            self.complete_quotation_questions(app)
+            app.button(key="compose__generate").click().run(timeout=10)
+            self.assertEqual(generate_mock.call_count, 1)
+
+            app.button(key="compose__edit_information").click().run(timeout=10)
+            app.button(
+                key="compose__review_edit__supplier_name"
+            ).click().run(timeout=10)
+            app.text_input(
+                key="compose__answer_widget__supplier_name"
+            ).set_value("XYZ Components")
+            app.button(key="compose__question_next").click().run(timeout=10)
+            app.button(key="compose__generate").click().run(timeout=10)
+
+            self.assertEqual(generate_mock.call_count, 2)
+            latest_facts = generate_mock.call_args.kwargs["facts"]
+            self.assertEqual(latest_facts["supplier_name"], "XYZ Components")
 
     def test_more_scenarios_shows_three_planned_categories(self) -> None:
         app = self.create_home()

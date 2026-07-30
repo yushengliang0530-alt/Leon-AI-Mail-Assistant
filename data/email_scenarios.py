@@ -178,7 +178,7 @@ SUPPLIER_SCENARIOS: tuple[Scenario, ...] = (
     ),
     Scenario(
         id="supplier_delay_explanation",
-        title_zh="延期解释",
+        title_zh="要求解释延期",
         title_en="Request Delay Explanation",
         description="要求供应商说明已知延期事实、原因和恢复计划。",
         fields=(

@@ -1,4 +1,4 @@
-"""Three-step supplier follow-up workflow driven by Scenario configuration."""
+"""Four-step guided supplier workflow driven by Scenario configuration."""
 
 import base64
 import html
@@ -19,7 +19,16 @@ from localization_service import (
 )
 from models.scenario import Scenario, ScenarioField
 from services.scenario_service import ScenarioService, validate_scenario_facts
-from ui.state import return_to_home, set_compose_step, set_compose_task
+from ui.state import (
+    advance_compose_question,
+    back_compose_question,
+    edit_compose_answer,
+    return_to_compose_review,
+    return_to_home,
+    save_compose_answer,
+    set_compose_step,
+    set_compose_task,
+)
 
 
 TONE_OPTIONS = {
@@ -64,7 +73,7 @@ def _inject_styles() -> None:
             font-size:.68rem;font-weight:730;
         }
         .st-key-compose__workspace .compose-progress {
-            display:grid;grid-template-columns:repeat(3,1fr);
+            display:grid;grid-template-columns:repeat(4,1fr);
             margin:0 0 1.55rem;border:1px solid var(--compose-line);
             border-radius:.8rem;overflow:hidden;background:#fff;
         }
@@ -88,12 +97,27 @@ def _inject_styles() -> None:
         .st-key-compose__workspace .compose-section-help {
             margin:0 0 1rem;color:var(--compose-muted);font-size:.82rem;
         }
-        .st-key-compose__workspace .compose-field-label {
-            margin:.55rem 0 .3rem;color:#263955;font-size:.82rem;font-weight:690;
+        .st-key-compose__workspace .st-key-compose__question_card {
+            max-width:42rem;margin:1.3rem auto;padding:1.65rem 1.75rem 1.4rem;
+            border:1px solid var(--compose-line);border-radius:1rem;background:#fff;
+            box-shadow:0 12px 34px rgba(28,48,79,.06);
         }
-        .st-key-compose__workspace .compose-field-label small {
-            display:block;margin-top:.08rem;color:#8a97a8;
-            font-size:.69rem;font-weight:520;
+        .st-key-compose__workspace .compose-question-count {
+            margin-bottom:.75rem;color:var(--compose-blue);
+            font-size:.7rem;font-weight:750;letter-spacing:.08em;
+            text-transform:uppercase;
+        }
+        .st-key-compose__workspace .compose-question-card h2 {
+            margin:0 0 .35rem;color:var(--compose-ink);
+            font-size:clamp(1.3rem,3vw,1.7rem);line-height:1.25;
+            letter-spacing:-.025em;
+        }
+        .st-key-compose__workspace .compose-question-en {
+            margin-bottom:.9rem;color:#8995a6;font-size:.76rem;font-weight:540;
+        }
+        .st-key-compose__workspace .compose-question-help {
+            margin:0 0 1rem;color:var(--compose-muted);
+            font-size:.8rem;line-height:1.55;
         }
         .st-key-compose__workspace .compose-required {
             margin-left:.3rem;color:#b14848;font-size:.66rem;font-weight:650;
@@ -109,9 +133,27 @@ def _inject_styles() -> None:
         .st-key-compose__workspace div[data-testid="stButton"] > button p {
             width:100%;text-align:left;
         }
-        .st-key-compose__workspace .compose-review {
-            margin:1rem 0;padding:.9rem 1rem;border-left:3px solid #d09a35;
-            background:#fffaf0;color:#5a4930;font-size:.8rem;line-height:1.6;
+        .st-key-compose__workspace .st-key-compose__question_card div[data-testid="stButton"] > button p,
+        .st-key-compose__workspace .st-key-compose__summary_card div[data-testid="stButton"] > button p {
+            text-align:center;
+        }
+        .st-key-compose__workspace .st-key-compose__summary_card {
+            margin:1rem 0 1.15rem;padding:.35rem 1.2rem;
+            border:1px solid var(--compose-line);border-radius:.9rem;background:#fff;
+            box-shadow:0 10px 28px rgba(28,48,79,.05);
+        }
+        .st-key-compose__workspace .compose-summary-row {
+            display:grid;grid-template-columns:minmax(7.5rem,.65fr) 2fr;
+            gap:1rem;padding:.85rem 0;border-bottom:1px solid #e8edf4;
+        }
+        .st-key-compose__workspace .compose-summary-row:last-child {
+            border-bottom:0;
+        }
+        .st-key-compose__workspace .compose-summary-label {
+            color:#708097;font-size:.72rem;font-weight:680;
+        }
+        .st-key-compose__workspace .compose-summary-value {
+            color:#263955;font-size:.84rem;line-height:1.5;
         }
         .st-key-compose__workspace .compose-analysis-grid {
             display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.6rem;
@@ -143,6 +185,12 @@ def _inject_styles() -> None:
             .st-key-compose__workspace .compose-analysis-grid {
                 grid-template-columns:1fr;
             }
+            .st-key-compose__workspace .st-key-compose__question_card {
+                margin:1rem 0;padding:1.25rem 1rem;
+            }
+            .st-key-compose__workspace .compose-summary-row {
+                grid-template-columns:1fr;gap:.25rem;
+            }
             .st-key-compose__workspace div[data-testid="stButton"] > button {
                 min-height:44px;
             }
@@ -154,7 +202,7 @@ def _inject_styles() -> None:
 
 
 def _progress(step: int) -> None:
-    labels = ("① 场景", "② 信息", "③ 邮件")
+    labels = ("① 场景", "② 问答", "③ 确认", "④ 邮件")
     items = "".join(
         f'<span class="{"active" if number == step else "done" if number < step else ""}">'
         f"{label}</span>"
@@ -166,22 +214,11 @@ def _progress(step: int) -> None:
     )
 
 
-def _field_label(field: ScenarioField) -> None:
-    required = (
-        '<span class="compose-required">必填</span>' if field.required else ""
-    )
-    st.markdown(
-        (
-            f'<div class="compose-field-label">{html.escape(field.label_zh)}'
-            f"{required}<small>{html.escape(field.label_en)}</small></div>"
-        ),
-        unsafe_allow_html=True,
-    )
-
-
-def _render_field(field: ScenarioField) -> str:
-    _field_label(field)
-    key = f"compose__field__{field.key}"
+def _render_answer_input(field: ScenarioField) -> str:
+    key = f"compose__answer_widget__{field.key}"
+    answers = dict(st.session_state.get("compose__answers", {}))
+    if key not in st.session_state:
+        st.session_state[key] = str(answers.get(field.key, ""))
     common = {
         "key": key,
         "placeholder": field.placeholder,
@@ -189,7 +226,7 @@ def _render_field(field: ScenarioField) -> str:
         "max_chars": field.max_length,
     }
     if field.field_type == "textarea":
-        return st.text_area(field.label_zh, height=100, **common)
+        return st.text_area(field.label_zh, height=135, **common)
     return st.text_input(field.label_zh, **common)
 
 
@@ -327,63 +364,112 @@ def _render_advanced(scenario: Scenario) -> tuple[str, str, str, SenderDetails]:
 
 def _render_step_two(
     scenario: Scenario,
-    scenario_service: ScenarioService,
 ) -> None:
-    st.markdown(
-        f'<div class="compose-section-title">{html.escape(scenario.title_zh)}：填写必要事实</div>'
-        '<p class="compose-section-help">只填写你确认的信息；不确定的可选内容请留空。</p>',
-        unsafe_allow_html=True,
+    total = len(scenario.fields)
+    question_index = min(
+        max(int(st.session_state.get("compose__question_index", 0)), 0),
+        total - 1,
     )
-    with st.form("compose__supplier_form", border=True):
-        facts = {field.key: _render_field(field) for field in scenario.fields}
-        with st.expander(
-            "高级选项 · Tone, Region, Recipient & Signature",
-            expanded=False,
-        ):
-            tone, country_region, recipient, sender = _render_advanced(scenario)
-        submitted = st.form_submit_button(
-            "生成英文邮件",
-            key="compose__generate",
-            type="primary",
-            use_container_width=True,
-            disabled=bool(st.session_state["compose__request_in_progress"]),
-        )
+    field = scenario.fields[question_index]
+    editing = st.session_state.get("compose__edit_field_key") == field.key
+    required_note = "必填问题" if field.required else "可选问题"
 
+    with st.container(border=True, key="compose__question_card"):
+        st.markdown(
+            (
+                f'<div class="compose-question-count">{html.escape(scenario.title_zh)}'
+                f" · 问题 {question_index + 1} / {total} · {required_note}</div>"
+                f"<h2>{html.escape(field.label_zh)}？</h2>"
+                f'<div class="compose-question-en">{html.escape(field.label_en)}</div>'
+            ),
+            unsafe_allow_html=True,
+        )
+        if field.help_text:
+            st.markdown(
+                f'<p class="compose-question-help">{html.escape(field.help_text)}</p>',
+                unsafe_allow_html=True,
+            )
+        answer = _render_answer_input(field)
+
+        error = str(st.session_state.get("compose__error", ""))
+        if error:
+            st.error(error)
+
+        left, middle, right = st.columns((1, 1, 1.35))
+        with left:
+            back_label = "取消修改" if editing else "Back · 上一题"
+            back_clicked = st.button(
+                back_label,
+                key="compose__question_back",
+                use_container_width=True,
+            )
+        with middle:
+            skip_clicked = False
+            if not field.required and not editing:
+                skip_clicked = st.button(
+                    "暂时跳过",
+                    key="compose__question_skip",
+                    use_container_width=True,
+                )
+        with right:
+            next_label = "保存修改" if editing else (
+                "进入确认" if question_index + 1 == total else "Next · 下一题"
+            )
+            next_clicked = st.button(
+                next_label,
+                key="compose__question_next",
+                type="primary",
+                use_container_width=True,
+            )
+
+    if back_clicked:
+        if editing:
+            return_to_compose_review()
+        else:
+            if answer.strip() or not field.required:
+                save_compose_answer(
+                    field.key,
+                    answer,
+                    completed=bool(answer.strip()) or not field.required,
+                )
+            back_compose_question()
+        st.rerun()
+
+    if skip_clicked:
+        save_compose_answer(field.key, "", completed=True)
+        advance_compose_question(total)
+        st.rerun()
+
+    if next_clicked:
+        clean_answer = answer.strip()
+        if field.required and not clean_answer:
+            message = f"请先回答：{field.label_zh}。"
+            st.session_state["compose__error"] = message
+            st.rerun()
+        save_compose_answer(field.key, clean_answer, completed=True)
+        if editing:
+            return_to_compose_review()
+        else:
+            advance_compose_question(total)
+        st.rerun()
+
+
+def _generate_from_review(
+    scenario: Scenario,
+    scenario_service: ScenarioService,
+    *,
+    facts: dict[str, str],
+    tone: str,
+    country_region: str,
+    recipient: str,
+    sender: SenderDetails,
+) -> None:
     validation = validate_scenario_facts(scenario, facts)
-    combined_facts = "\n".join(validation.cleaned_facts.values())
-    risk = analyze_content_risk(combined_facts)
-    if risk.risk_level == "high":
-        st.error(risk.summary)
-        risk_confirmed = st.checkbox(
-            "我已检查并确认这些内容可以提交给 AI。",
-            key="compose__risk_confirmed",
-        )
-    else:
-        risk_confirmed = True
-
-    if st.button(
-        "← 返回选择任务",
-        key="compose__back_to_step_1",
-        on_click=set_compose_step,
-        args=(1,),
-    ):
-        return
-
-    if not submitted:
-        return
     if not validation.is_valid:
         st.session_state["compose__error"] = validation.errors[0]
         st.error(validation.errors[0])
         return
-    if not risk_confirmed:
-        message = "检测到高风险内容，请人工检查并确认后再提交。"
-        st.session_state["compose__error"] = message
-        st.error(message)
-        return
-    if st.session_state["compose__request_in_progress"]:
-        st.warning("邮件正在生成，请勿重复提交。")
-        return
-
+    combined_facts = "\n".join(validation.cleaned_facts.values())
     custom_region = str(st.session_state.get("compose__custom_region", ""))
     guidance = build_localization_guidance(
         recipient=recipient,
@@ -392,6 +478,7 @@ def _render_step_two(
         tone=tone,
         source_text=combined_facts,
     )
+    st.session_state["compose__review_confirmed"] = True
     st.session_state["compose__fields"] = validation.cleaned_facts
     st.session_state["compose__request_in_progress"] = True
     started = time.perf_counter()
@@ -413,19 +500,128 @@ def _render_step_two(
         st.session_state["compose__duration_seconds"] = duration
         st.session_state["compose__usage_tokens"] = result.usage_tokens
         st.session_state["compose__error"] = ""
-        st.session_state["compose__step"] = 3
+        st.session_state["compose__step"] = 4
         st.session_state["deepseek_connected"] = True
         st.session_state["last_request_duration"] = duration
         st.session_state["last_usage_tokens"] = result.usage_tokens
         st.rerun()
     except AIServiceError as exc:
+        st.session_state["compose__review_confirmed"] = False
         st.session_state["compose__error"] = exc.user_message
         st.error(exc.user_message)
     finally:
         st.session_state["compose__request_in_progress"] = False
 
 
-def _render_step_three(scenario: Scenario) -> None:
+def _render_step_three(
+    scenario: Scenario,
+    scenario_service: ScenarioService,
+) -> None:
+    answers = dict(st.session_state.get("compose__answers", {}))
+    validation = validate_scenario_facts(scenario, answers)
+    st.markdown(
+        '<div class="compose-section-title">本次商务沟通信息</div>'
+        '<p class="compose-section-help">生成前请核对事实。AI只会使用下列已填写内容。</p>',
+        unsafe_allow_html=True,
+    )
+    if not validation.is_valid:
+        st.error(validation.errors[0])
+        st.button(
+            "返回补充信息",
+            key="compose__review_fix_missing",
+            on_click=edit_compose_answer,
+            args=(
+                scenario.required_fields[0].key,
+                scenario.fields.index(scenario.required_fields[0]),
+            ),
+        )
+        return
+
+    with st.container(border=True, key="compose__summary_card"):
+        for index, field in enumerate(scenario.fields):
+            value = validation.cleaned_facts.get(field.key)
+            if not value:
+                continue
+            content, action = st.columns((5, 1))
+            with content:
+                st.markdown(
+                    (
+                        f'<div class="compose-summary-label">{html.escape(field.label_zh)}</div>'
+                        f'<div class="compose-summary-value">{html.escape(value)}</div>'
+                    ),
+                    unsafe_allow_html=True,
+                )
+            with action:
+                st.button(
+                    "修改",
+                    key=f"compose__review_edit__{field.key}",
+                    on_click=edit_compose_answer,
+                    args=(field.key, index),
+                )
+
+    with st.expander(
+        "高级选项 · Tone, Region, Recipient & Signature",
+        expanded=False,
+    ):
+        tone, country_region, recipient, sender = _render_advanced(scenario)
+
+    combined_facts = "\n".join(validation.cleaned_facts.values())
+    risk = analyze_content_risk(combined_facts)
+    if risk.risk_level == "high":
+        st.error(risk.summary)
+        risk_confirmed = st.checkbox(
+            "我已检查并确认这些内容可以提交给 AI。",
+            key="compose__risk_confirmed",
+        )
+    else:
+        risk_confirmed = True
+
+    error = str(st.session_state.get("compose__error", ""))
+    if error:
+        st.error(error)
+
+    back, generate = st.columns((1, 1.7))
+    with back:
+        st.button(
+            "返回继续修改",
+            key="compose__review_back",
+            use_container_width=True,
+            on_click=edit_compose_answer,
+            args=(
+                scenario.fields[-1].key,
+                len(scenario.fields) - 1,
+            ),
+        )
+    with generate:
+        generate_clicked = st.button(
+            "生成英文邮件",
+            key="compose__generate",
+            type="primary",
+            use_container_width=True,
+            disabled=bool(st.session_state["compose__request_in_progress"]),
+        )
+    if not generate_clicked:
+        return
+    if not risk_confirmed:
+        st.session_state["compose__error"] = (
+            "检测到高风险内容，请人工检查并确认后再提交。"
+        )
+        st.rerun()
+    if st.session_state["compose__request_in_progress"]:
+        st.warning("邮件正在生成，请勿重复提交。")
+        return
+    _generate_from_review(
+        scenario,
+        scenario_service,
+        facts=validation.cleaned_facts,
+        tone=tone,
+        country_region=country_region,
+        recipient=recipient,
+        sender=sender,
+    )
+
+
+def _render_step_four(scenario: Scenario) -> None:
     st.markdown(
         '<div class="compose-section-title">您的英文邮件</div>'
         '<p class="compose-section-help">可以在复制前直接修改主题和正文。</p>',
@@ -516,11 +712,11 @@ def _render_step_three(scenario: Scenario) -> None:
     action_columns = st.columns(2)
     with action_columns[0]:
         st.button(
-            "← 修改信息",
+            "← 返回信息确认",
             key="compose__edit_information",
             use_container_width=True,
             on_click=set_compose_step,
-            args=(2,),
+            args=(3,),
         )
     with action_columns[1]:
         st.button(
@@ -558,7 +754,7 @@ def render_supplier_workflow(
                 <h1>催供应商</h1>
                 <p>Follow Up Supplier · 只填写必要事实，不需要编写 Prompt。</p>
               </div>
-              <div class="compose-current">当前：{html.escape(current)} · {step}/3</div>
+              <div class="compose-current">当前：{html.escape(current)} · {step}/4</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -572,9 +768,11 @@ def render_supplier_workflow(
         if step == 1:
             _render_step_one()
         elif step == 2 and scenario:
-            _render_step_two(scenario, scenario_service)
+            _render_step_two(scenario)
         elif step == 3 and scenario:
-            _render_step_three(scenario)
+            _render_step_three(scenario, scenario_service)
+        elif step == 4 and scenario:
+            _render_step_four(scenario)
         else:
             st.session_state["compose__step"] = 1
             st.warning("任务状态已重置，请重新选择供应商任务。")
