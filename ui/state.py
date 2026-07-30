@@ -10,6 +10,7 @@ __all__ = [
     "get_home_view",
     "get_selected_home_action",
     "initialize_home_state",
+    "invalidate_preflight",
     "open_legacy_improve",
     "open_reply_workspace",
     "open_supplier_workflow",
@@ -19,6 +20,7 @@ __all__ = [
     "return_to_reply_analysis",
     "return_to_reply_decisions",
     "return_to_reply_input",
+    "reset_preflight_state",
     "set_reply_item_index",
     "start_reply_decisions",
     "return_to_compose_review",
@@ -95,6 +97,18 @@ REPLY_DEFAULTS = {
     "reply__coverage_duration": None,
     "reply__generation_tokens": None,
     "reply__coverage_tokens": None,
+    "reply__target_tone": "Formal",
+}
+
+PREFLIGHT_DEFAULTS = {
+    "preflight__status": "idle",
+    "preflight__source_digest": "",
+    "preflight__local_items": (),
+    "preflight__ai_items": (),
+    "preflight__report": None,
+    "preflight__error": "",
+    "preflight__duration_seconds": None,
+    "preflight__usage_tokens": None,
 }
 
 
@@ -113,6 +127,9 @@ def initialize_home_state() -> None:
             st.session_state[key] = (
                 value.copy() if isinstance(value, dict) else value
             )
+    for key, value in PREFLIGHT_DEFAULTS.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
 
 def set_selected_home_action(action: str) -> None:
@@ -222,6 +239,23 @@ def _clear_reply_generation_values() -> None:
         st.session_state[key] = ""
     st.session_state["reply__generation_status"] = "idle"
     st.session_state["reply__coverage_status"] = "idle"
+    reset_preflight_state()
+
+
+def reset_preflight_state() -> None:
+    for key, value in PREFLIGHT_DEFAULTS.items():
+        st.session_state[key] = value
+
+
+def invalidate_preflight() -> None:
+    st.session_state["preflight__status"] = "stale"
+    st.session_state["preflight__source_digest"] = ""
+    st.session_state["preflight__report"] = None
+    st.session_state["preflight__local_items"] = ()
+    st.session_state["preflight__ai_items"] = ()
+    st.session_state["preflight__error"] = ""
+    st.session_state["preflight__duration_seconds"] = None
+    st.session_state["preflight__usage_tokens"] = None
 
 
 def start_reply_decisions(items: tuple[object, ...]) -> None:
@@ -270,6 +304,7 @@ def clear_reply_state() -> None:
             del st.session_state[key]
     for key, value in REPLY_DEFAULTS.items():
         st.session_state[key] = value
+    reset_preflight_state()
 
 
 def set_compose_task(task_id: str) -> None:

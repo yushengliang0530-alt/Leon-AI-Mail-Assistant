@@ -19,14 +19,21 @@ from services.incoming_email_analysis import (
 )
 from services.reply_item_service import normalize_reply_items
 from services.reply_generation_service import ReplyGenerationService
+from services.preflight_service import (
+    PreflightService,
+    preflight_source_digest,
+    report_from_items,
+)
 from ui.pages.reply_decision import (
     render_reply_decisions,
     render_reply_summary,
 )
 from ui.pages.reply_generation import render_reply_result
+from ui.pages.preflight import render_preflight_panel
 from ui.state import (
     clear_reply_state,
     prepare_reply_reanalysis,
+    invalidate_preflight,
     return_to_home,
     start_reply_decisions,
     sync_reply_source,
@@ -94,7 +101,7 @@ def _progress(step: int) -> None:
           <span class="{'active' if step == 2 else ''}">02　查看分析</span>
           <span class="{'active' if step == 3 else ''}">03　确认立场</span>
           <span class="{'active' if step == 4 else ''}">04　生成回复</span>
-          <span class="{'active' if step == 5 else ''}">05　覆盖检查</span>
+          <span class="{'active' if step == 5 else ''}">05　发送前检查</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -332,6 +339,7 @@ def render_reply_workspace(
     *,
     analysis_service: IncomingEmailAnalysisService,
     generation_service: ReplyGenerationService,
+    preflight_service: PreflightService,
     render_privacy_notice: Callable[[], None] | None = None,
 ) -> None:
     _inject_styles()
@@ -375,6 +383,8 @@ def render_reply_workspace(
         elif step in (4, 5):
             if render_reply_result():
                 _run_coverage(generation_service, items)
+            if step == 5 and render_preflight_panel():
+                _run_preflight(preflight_service, analysis)
         else:
             _render_result(analysis)
         if render_privacy_notice:
@@ -393,6 +403,7 @@ def _run_coverage(
 ) -> None:
     st.session_state["reply__coverage_error"] = ""
     st.session_state["reply__coverage_status"] = "running"
+    invalidate_preflight()
     started = time.perf_counter()
     try:
         with st.spinner("正在独立检查回复覆盖情况…"):
@@ -426,6 +437,82 @@ def _run_coverage(
     st.rerun()
 
 
+def _run_preflight(
+    service: PreflightService,
+    analysis: IncomingEmailAnalysis,
+) -> None:
+    subject = str(st.session_state.get("reply__subject", "")).strip()
+    body = str(st.session_state.get("reply__body", "")).strip()
+    if not subject or not body:
+        st.session_state["preflight__error"] = (
+            "请先确认邮件主题和正文，再运行发送前检查。"
+        )
+        st.session_state["preflight__status"] = "error"
+        st.rerun()
+
+    decisions = dict(st.session_state.get("reply__decisions", {}))
+    coverage = st.session_state.get("reply__coverage")
+    if (
+        st.session_state.get("reply__coverage_status") != "success"
+        or st.session_state.get("reply__coverage_digest")
+        != _email_digest(subject, body)
+    ):
+        coverage = None
+    tone = str(st.session_state.get("reply__target_tone", "Formal"))
+    local_items = service.build_local_items(
+        analysis=analysis,
+        decisions=decisions,
+        subject=subject,
+        body=body,
+        coverage=coverage,
+    )
+    st.session_state["preflight__local_items"] = local_items
+    st.session_state["preflight__status"] = "running"
+    st.session_state["preflight__error"] = ""
+    started = time.perf_counter()
+    try:
+        with st.spinner("正在检查遗漏、语气和商务风险…"):
+            report = service.inspect(
+                analysis=analysis,
+                decisions=decisions,
+                subject=subject,
+                body=body,
+                coverage=coverage,
+                target_tone=tone,
+            )
+        st.session_state["preflight__report"] = report
+        st.session_state["preflight__ai_items"] = tuple(
+            item for item in report.items if item.source == "ai"
+        )
+        st.session_state["preflight__usage_tokens"] = report.usage_tokens
+        st.session_state["preflight__status"] = "success"
+    except AIServiceError:
+        st.session_state["preflight__report"] = report_from_items(
+            local_items,
+            summary=(
+                "已完成本地规则检查；AI语义检查暂时不可用，"
+                "请人工确认称谓、语气和承诺。"
+            ),
+        )
+        st.session_state["preflight__ai_items"] = ()
+        st.session_state["preflight__usage_tokens"] = None
+        st.session_state["preflight__status"] = "partial"
+        st.session_state["preflight__error"] = (
+            "AI语义检查暂时不可用，已保留本地检查结果。"
+        )
+    st.session_state["preflight__source_digest"] = preflight_source_digest(
+        subject=subject,
+        body=body,
+        decisions=decisions,
+        target_tone=tone,
+        coverage=coverage,
+    )
+    st.session_state["preflight__duration_seconds"] = (
+        time.perf_counter() - started
+    )
+    st.rerun()
+
+
 def _generate_and_check(
     service: ReplyGenerationService,
     analysis: IncomingEmailAnalysis,
@@ -452,6 +539,9 @@ def _generate_and_check(
                 sender=sender,
                 country_region=str(
                     st.session_state.get("reply__country_region", "")
+                ),
+                target_tone=str(
+                    st.session_state.get("reply__target_tone", "Formal")
                 ),
             )
         st.session_state["reply__generated_email"] = result

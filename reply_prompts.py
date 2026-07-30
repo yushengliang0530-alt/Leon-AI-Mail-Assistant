@@ -8,6 +8,10 @@ def reply_generation_messages(payload: dict) -> list[dict[str, str]]:
 You write concise professional English reply emails.
 Return only JSON: {"subject":"...","body":"..."}.
 Use only confirmed facts and explicit reply decisions in the supplied data.
+Apply target_tone to the wording: Formal is professional and measured;
+Friendly is collaborative but not casual; Strong is clear and firm without
+threats or disrespect; Executive is concise, direct, and action-focused.
+Tone must never change the confirmed facts or position.
 Never invent dates, amounts, names, project numbers, responsibility, approval,
 deadlines, or commitments. If a position is unable_to_confirm, explicitly say
 it cannot currently be confirmed. Omit unavailable facts. Never expose

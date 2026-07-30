@@ -40,9 +40,25 @@ class UIStateImportContractTests(unittest.TestCase):
             "sync_reply_source",
             "return_to_reply_input",
             "clear_reply_state",
+            "invalidate_preflight",
+            "reset_preflight_state",
         ):
             self.assertIn(function_name, state.__all__)
             self.assertTrue(callable(getattr(state, function_name, None)))
+
+    def test_preflight_state_is_independent_and_can_be_invalidated(self) -> None:
+        session = {
+            **state.REPLY_DEFAULTS,
+            **state.PREFLIGHT_DEFAULTS,
+            "preflight__status": "success",
+            "preflight__report": object(),
+            "reply__subject": "Preserved",
+        }
+        with patch.object(state.st, "session_state", session):
+            state.invalidate_preflight()
+        self.assertEqual(session["preflight__status"], "stale")
+        self.assertIsNone(session["preflight__report"])
+        self.assertEqual(session["reply__subject"], "Preserved")
 
     def test_reply_source_change_invalidates_analysis_and_decisions(self) -> None:
         session = {

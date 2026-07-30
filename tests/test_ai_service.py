@@ -15,6 +15,7 @@ from ai_service import (
 from config import DeepSeekSettings
 from prompts import generation_messages
 from tests.test_incoming_email_analysis import VALID_ANALYSIS
+from tests.test_preflight import semantic_json
 
 
 def fake_response(content: str):
@@ -186,6 +187,29 @@ class DeepSeekEmailServiceTests(unittest.TestCase):
         prompt = fake_client.completions.calls[0]["messages"][1]["content"]
         self.assertIn('"supplier_name": "ABC Components"', prompt)
         self.assertNotIn('"project_name"', prompt)
+
+    def test_preflight_parses_and_uses_one_repair_retry(self) -> None:
+        fake_client = FakeClient(["invalid", semantic_json("CHECK")])
+        service = DeepSeekEmailService(
+            self.settings(),
+            client_factory=lambda _: fake_client,
+        )
+        result = service.check_reply_preflight(payload={"email": {}})
+        self.assertEqual(result.items[0].status, "CHECK")
+        self.assertEqual(result.usage_tokens, 246)
+        self.assertEqual(len(fake_client.completions.calls), 2)
+
+    def test_preflight_invalid_json_raises_safe_error(self) -> None:
+        fake_client = FakeClient(["invalid", "still invalid"])
+        service = DeepSeekEmailService(
+            self.settings(),
+            client_factory=lambda _: fake_client,
+        )
+        with self.assertRaises(AIServiceError) as context:
+            service.check_reply_preflight(payload={"email": {}})
+        self.assertEqual(context.exception.code, "preflight_parse_error")
+        self.assertNotIn("still invalid", context.exception.user_message)
+        self.assertEqual(len(fake_client.completions.calls), 2)
 
     def test_improvement_preserves_content_and_uses_local_signature(self) -> None:
         fake_client = FakeClient(

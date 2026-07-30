@@ -141,6 +141,21 @@ class ReplyGenerationServiceTests(unittest.TestCase):
         self.assertNotIn("Leon", result.body)
         self.assertTrue(result.body.endswith("Best regards,"))
 
+    def test_target_tone_changes_prompt_payload_and_local_closing(self) -> None:
+        self.backend.generate_reply_email.return_value = GeneratedReply(
+            "Update", "We cannot confirm the date."
+        )
+        result = self.service.generate(
+            analysis=self.analysis,
+            items=self.items,
+            decisions=self.decisions,
+            sender=SenderDetails(),
+            target_tone="Executive",
+        )
+        payload = self.backend.generate_reply_email.call_args.kwargs["payload"]
+        self.assertEqual(payload["target_tone"], "Executive")
+        self.assertTrue(result.body.endswith("Sincerely,"))
+
     def test_coverage_is_a_distinct_backend_call(self) -> None:
         expected = CoverageResult(
             items=(),

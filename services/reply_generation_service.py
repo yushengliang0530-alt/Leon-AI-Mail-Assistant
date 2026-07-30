@@ -41,18 +41,22 @@ class ReplyGenerationService:
         decisions: dict[str, dict],
         sender: SenderDetails,
         country_region: str = "",
+        target_tone: str = "Formal",
     ) -> GeneratedReply:
+        if target_tone not in ("Formal", "Friendly", "Strong", "Executive"):
+            target_tone = "Formal"
         payload = {
             "analysis": asdict(analysis)
             | {"usage_tokens": None},
             "items": [asdict(item) for item in items],
             "decisions": _public_decisions(decisions),
             "country_region": country_region or None,
+            "target_tone": target_tone,
         }
         result = self.backend.generate_reply_email(payload=payload)
         return GeneratedReply(
             subject=result.subject,
-            body=append_signature(result.body, "Formal", sender),
+            body=append_signature(result.body, target_tone, sender),
             usage_tokens=result.usage_tokens,
         )
 

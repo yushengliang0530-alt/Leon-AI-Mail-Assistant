@@ -491,6 +491,18 @@ def render_reply_summary(items: tuple[ReplyItem, ...]) -> bool:
         st.success("回复立场已逐项确认，可以进入下一阶段。")
     else:
         st.warning("仍有必须回复的事项尚未完成。")
+    st.selectbox(
+        "目标语气 · Target Tone",
+        ("Formal", "Friendly", "Strong", "Executive"),
+        key="reply__target_tone",
+        format_func=lambda value: {
+            "Formal": "正式 · Formal",
+            "Friendly": "友好 · Friendly",
+            "Strong": "明确强硬 · Strong",
+            "Executive": "高管简洁 · Executive",
+        }[value],
+        help="语气只影响表达方式，不会改变已确认的事实和立场。",
+    )
     generate = st.button(
         "生成英文回复 · Generate Reply",
         key="reply__generate_reply",

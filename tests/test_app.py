@@ -9,11 +9,13 @@ from ai_service import AIServiceError, EmailResult
 from config import APP_NAME_EN, APP_NAME_ZH, APP_VERSION
 from models.incoming_email import parse_incoming_email_analysis
 from models.reply_generation import CoverageItem, CoverageResult, GeneratedReply
+from models.preflight import parse_semantic_preflight
 from services.reply_item_service import (
     build_decision_summary,
     normalize_reply_items,
 )
 from tests.test_incoming_email_analysis import VALID_ANALYSIS
+from tests.test_preflight import semantic_json
 
 
 APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
@@ -361,21 +363,44 @@ class StreamlitAppTests(unittest.TestCase):
                 "ai_service.DeepSeekEmailService.check_reply_coverage",
                 return_value=coverage,
             ) as coverage_mock,
+            patch(
+                "ai_service.DeepSeekEmailService.check_reply_preflight",
+                return_value=parse_semantic_preflight(semantic_json()),
+            ) as preflight_mock,
         ):
             app.run(timeout=10)
+            app.selectbox(key="reply__target_tone").select(
+                "Executive"
+            ).run(timeout=10)
             app.button(key="reply__generate_reply").click().run(timeout=10)
             self.assertEqual(app.session_state["reply__step"], 5)
             self.assertEqual(generate_mock.call_count, 1)
             self.assertEqual(coverage_mock.call_count, 1)
-            self.assertIn("Best regards,", app.session_state["reply__body"])
+            self.assertEqual(preflight_mock.call_count, 0)
+            self.assertIn("Sincerely,", app.session_state["reply__body"])
             rendered = "\n".join(item.value for item in app.markdown)
             self.assertIn("本次回复覆盖 1 / 1 项", rendered)
+
+            app.button(key="preflight__run").click().run(timeout=10)
+            self.assertEqual(preflight_mock.call_count, 1)
+            self.assertEqual(
+                app.session_state["preflight__status"], "success"
+            )
+            self.assertEqual(
+                app.session_state["preflight__report"].overall_status,
+                "CHECK",
+            )
+            app.run(timeout=10)
+            self.assertEqual(preflight_mock.call_count, 1)
 
             app.text_area(key="reply__body").set_value(
                 app.session_state["reply__body"] + "\nAdditional clarification."
             ).run(timeout=10)
             self.assertEqual(
                 app.session_state["reply__coverage_status"], "stale"
+            )
+            self.assertEqual(
+                app.session_state["preflight__status"], "stale"
             )
             app.button(key="reply__recheck_coverage").click().run(timeout=10)
             self.assertEqual(generate_mock.call_count, 1)

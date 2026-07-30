@@ -35,6 +35,7 @@ from localization_service import (
 from services.scenario_service import ScenarioService
 from services.incoming_email_analysis import IncomingEmailAnalysisService
 from services.reply_generation_service import ReplyGenerationService
+from services.preflight_service import PreflightService
 from ui.pages.compose_supplier import render_supplier_workflow
 from ui.pages.home import render_home
 from ui.pages.reply import render_reply_workspace
@@ -935,6 +936,7 @@ if current_home_view == "reply_analysis":
             reply_backend
         ),
         generation_service=ReplyGenerationService(reply_backend),
+        preflight_service=PreflightService(reply_backend),
     )
     st.stop()
 

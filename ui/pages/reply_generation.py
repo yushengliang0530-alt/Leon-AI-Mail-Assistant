@@ -3,6 +3,7 @@
 import html
 
 import streamlit as st
+from ui.state import invalidate_preflight
 
 
 STATUS_META = {
@@ -17,6 +18,7 @@ def invalidate_reply_coverage() -> None:
     st.session_state["reply__coverage_digest"] = ""
     st.session_state["reply__coverage_status"] = "stale"
     st.session_state["reply__coverage_error"] = ""
+    invalidate_preflight()
 
 
 def render_reply_result() -> bool:

@@ -33,6 +33,15 @@ from models.reply_generation import (
     parse_generated_reply,
     with_usage,
 )
+from models.preflight import (
+    SemanticPreflightResult,
+    parse_semantic_preflight,
+    with_usage as with_preflight_usage,
+)
+from preflight_prompts import (
+    preflight_check_messages,
+    preflight_repair_messages,
+)
 from reply_prompts import (
     coverage_check_messages,
     reply_format_repair_messages,
@@ -539,4 +548,34 @@ class DeepSeekEmailService:
             raise AIServiceError(
                 "覆盖检查返回格式异常，请重新检查。",
                 "coverage_parse_error",
+            ) from None
+
+    def check_reply_preflight(
+        self, *, payload: dict
+    ) -> SemanticPreflightResult:
+        first = self._completion(preflight_check_messages(payload))
+        try:
+            return with_preflight_usage(
+                parse_semantic_preflight(first.content),
+                first.usage_tokens,
+            )
+        except (json.JSONDecodeError, ValueError):
+            logger.warning("Preflight parsing failed; attempting one repair")
+        repaired = self._completion(
+            preflight_repair_messages(first.content)
+        )
+        tokens = [
+            value
+            for value in (first.usage_tokens, repaired.usage_tokens)
+            if value is not None
+        ]
+        try:
+            return with_preflight_usage(
+                parse_semantic_preflight(repaired.content),
+                sum(tokens) if tokens else None,
+            )
+        except (json.JSONDecodeError, ValueError):
+            raise AIServiceError(
+                "发送前检查返回格式异常，请重新检查。",
+                "preflight_parse_error",
             ) from None
