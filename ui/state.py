@@ -80,6 +80,21 @@ REPLY_DEFAULTS = {
     "reply__decision_error": "",
     "reply__show_all_items": False,
     "reply__decision_widget_epoch": 0,
+    "reply__generated_email": None,
+    "reply__subject": "",
+    "reply__body": "",
+    "reply__coverage": None,
+    "reply__summary": "",
+    "reply__generation_digest": "",
+    "reply__coverage_digest": "",
+    "reply__generation_status": "idle",
+    "reply__coverage_status": "idle",
+    "reply__generation_error": "",
+    "reply__coverage_error": "",
+    "reply__generation_duration": None,
+    "reply__coverage_duration": None,
+    "reply__generation_tokens": None,
+    "reply__coverage_tokens": None,
 }
 
 
@@ -182,6 +197,31 @@ def _clear_reply_decision_values() -> None:
         int(st.session_state.get("reply__decision_widget_epoch", 0)) + 1
     )
     _clear_reply_decision_widgets()
+    _clear_reply_generation_values()
+
+
+def _clear_reply_generation_values() -> None:
+    for key in (
+        "reply__generated_email",
+        "reply__coverage",
+        "reply__generation_duration",
+        "reply__coverage_duration",
+        "reply__generation_tokens",
+        "reply__coverage_tokens",
+    ):
+        st.session_state[key] = None
+    for key in (
+        "reply__subject",
+        "reply__body",
+        "reply__summary",
+        "reply__generation_digest",
+        "reply__coverage_digest",
+        "reply__generation_error",
+        "reply__coverage_error",
+    ):
+        st.session_state[key] = ""
+    st.session_state["reply__generation_status"] = "idle"
+    st.session_state["reply__coverage_status"] = "idle"
 
 
 def start_reply_decisions(items: tuple[object, ...]) -> None:
@@ -191,7 +231,7 @@ def start_reply_decisions(items: tuple[object, ...]) -> None:
     st.session_state["reply__decision_widget_epoch"] = (
         int(st.session_state.get("reply__decision_widget_epoch", 0)) + 1
     )
-    st.session_state["reply__step"] = 2
+    st.session_state["reply__step"] = 3
 
 
 def set_reply_item_index(index: int) -> None:
@@ -206,12 +246,13 @@ def set_reply_item_index(index: int) -> None:
 
 
 def return_to_reply_analysis() -> None:
-    st.session_state["reply__step"] = 1
+    st.session_state["reply__step"] = 2
     st.session_state["reply__decision_error"] = ""
 
 
 def return_to_reply_decisions() -> None:
-    st.session_state["reply__step"] = 2
+    st.session_state["reply__step"] = 3
+    st.session_state["reply__decision_summary"] = None
     st.session_state["reply__decision_widget_epoch"] = (
         int(st.session_state.get("reply__decision_widget_epoch", 0)) + 1
     )

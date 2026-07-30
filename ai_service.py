@@ -26,6 +26,18 @@ from models.incoming_email import (
     IncomingEmailAnalysis,
     parse_incoming_email_analysis,
 )
+from models.reply_generation import (
+    CoverageResult,
+    GeneratedReply,
+    parse_coverage,
+    parse_generated_reply,
+    with_usage,
+)
+from reply_prompts import (
+    coverage_check_messages,
+    reply_format_repair_messages,
+    reply_generation_messages,
+)
 from communication_analysis_service import (
     CommunicationAnalysis,
     parse_communication_analysis,
@@ -467,4 +479,64 @@ class DeepSeekEmailService:
             raise AIServiceError(
                 "AI返回分析格式异常，请重新分析。",
                 "analysis_parse_error",
+            ) from None
+
+    def generate_reply_email(self, *, payload: dict) -> GeneratedReply:
+        first = self._completion(reply_generation_messages(payload))
+        try:
+            return with_usage(
+                parse_generated_reply(first.content), first.usage_tokens
+            )
+        except (json.JSONDecodeError, ValueError):
+            logger.warning("Reply generation parsing failed; attempting one repair")
+        repaired = self._completion(
+            reply_format_repair_messages(first.content, coverage=False)
+        )
+        tokens = [
+            value
+            for value in (first.usage_tokens, repaired.usage_tokens)
+            if value is not None
+        ]
+        try:
+            return with_usage(
+                parse_generated_reply(repaired.content),
+                sum(tokens) if tokens else None,
+            )
+        except (json.JSONDecodeError, ValueError):
+            raise AIServiceError(
+                "AI返回回复格式异常，请重新生成。",
+                "reply_parse_error",
+            ) from None
+
+    def check_reply_coverage(
+        self,
+        *,
+        payload: dict,
+        expected_item_ids: tuple[str, ...],
+    ) -> CoverageResult:
+        first = self._completion(coverage_check_messages(payload))
+        try:
+            return with_usage(
+                parse_coverage(first.content, expected_item_ids),
+                first.usage_tokens,
+            )
+        except (json.JSONDecodeError, ValueError):
+            logger.warning("Coverage parsing failed; attempting one repair")
+        repaired = self._completion(
+            reply_format_repair_messages(first.content, coverage=True)
+        )
+        tokens = [
+            value
+            for value in (first.usage_tokens, repaired.usage_tokens)
+            if value is not None
+        ]
+        try:
+            return with_usage(
+                parse_coverage(repaired.content, expected_item_ids),
+                sum(tokens) if tokens else None,
+            )
+        except (json.JSONDecodeError, ValueError):
+            raise AIServiceError(
+                "覆盖检查返回格式异常，请重新检查。",
+                "coverage_parse_error",
             ) from None

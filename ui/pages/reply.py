@@ -1,12 +1,14 @@
 """Phase 3 reply workspace: analysis followed by local decision guidance."""
 
 from collections.abc import Callable
+import hashlib
 import html
+import json
 import time
 
 import streamlit as st
 
-from ai_service import AIServiceError
+from ai_service import AIServiceError, SenderDetails
 from content_risk_service import ADVISORY_NOTICE, analyze_content_risk
 from localization_service import COUNTRY_REGION_OPTIONS
 from models.incoming_email import IncomingEmailAnalysis
@@ -16,10 +18,12 @@ from services.incoming_email_analysis import (
     source_digest,
 )
 from services.reply_item_service import normalize_reply_items
+from services.reply_generation_service import ReplyGenerationService
 from ui.pages.reply_decision import (
     render_reply_decisions,
     render_reply_summary,
 )
+from ui.pages.reply_generation import render_reply_result
 from ui.state import (
     clear_reply_state,
     prepare_reply_reanalysis,
@@ -56,7 +60,7 @@ def _inject_styles() -> None:
           solid #c7d3e6;border-radius:999px;background:#f8faff;color:#425978;
           font-size:.72rem;font-weight:700;white-space:nowrap;}
         .st-key-reply__workspace .reply-progress{display:grid;
-          grid-template-columns:repeat(3,1fr);gap:.55rem;margin-bottom:1.35rem;}
+          grid-template-columns:repeat(5,1fr);gap:.4rem;margin-bottom:1.35rem;}
         .st-key-reply__workspace .reply-progress span{padding:.62rem .75rem;
           border-bottom:2px solid var(--reply-line);color:#8995a5;font-size:.76rem;}
         .st-key-reply__workspace .reply-progress .active{border-color:
@@ -73,7 +77,9 @@ def _inject_styles() -> None:
           flex-direction:column}.st-key-reply__workspace h1{font-size:1.7rem}
           .st-key-reply__workspace div[data-testid="stHorizontalBlock"]{
           flex-direction:column}.st-key-reply__workspace div[data-testid="column"]{
-          width:100%!important;flex:1 1 100%!important}}
+          width:100%!important;flex:1 1 100%!important}
+          .st-key-reply__workspace .reply-progress span{font-size:.64rem;
+          padding:.48rem .25rem}}
         </style>
         """,
         unsafe_allow_html=True,
@@ -85,8 +91,10 @@ def _progress(step: int) -> None:
         f"""
         <div class="reply-progress">
           <span class="{'active' if step == 1 else ''}">01　分析来信</span>
-          <span class="{'active' if step == 2 else ''}">02　确认立场</span>
-          <span class="{'active' if step == 3 else ''}">03　决策摘要</span>
+          <span class="{'active' if step == 2 else ''}">02　查看分析</span>
+          <span class="{'active' if step == 3 else ''}">03　确认立场</span>
+          <span class="{'active' if step == 4 else ''}">04　生成回复</span>
+          <span class="{'active' if step == 5 else ''}">05　覆盖检查</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -197,7 +205,7 @@ def _render_input(service: IncomingEmailAnalysisService) -> None:
             st.session_state["reply__duration"] = time.perf_counter() - started
             st.session_state["reply__tokens"] = analysis.usage_tokens
             st.session_state["reply__request_status"] = "success"
-            st.session_state["reply__step"] = 1
+            st.session_state["reply__step"] = 2
             st.rerun()
         except (IncomingEmailInputError, AIServiceError) as exc:
             message = (
@@ -323,6 +331,7 @@ def _render_result(analysis: IncomingEmailAnalysis) -> None:
 def render_reply_workspace(
     *,
     analysis_service: IncomingEmailAnalysisService,
+    generation_service: ReplyGenerationService,
     render_privacy_notice: Callable[[], None] | None = None,
 ) -> None:
     _inject_styles()
@@ -342,7 +351,7 @@ def render_reply_workspace(
                 <div class="reply-sub">Reply Workspace<br>
                   先理解来信，再逐项确认您的处理立场。</div>
               </div>
-              <div class="reply-task">回复收到的邮件 · {step}/3</div>
+              <div class="reply-task">回复收到的邮件 · {step}/5</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -358,12 +367,107 @@ def render_reply_workspace(
         if not digest_valid:
             st.session_state["reply__step"] = 1
             _render_input(analysis_service)
-        elif step == 2:
+        elif step == 3 and st.session_state.get("reply__decision_summary") is None:
             render_reply_decisions(items)
         elif step == 3:
-            render_reply_summary(items)
+            if render_reply_summary(items):
+                _generate_and_check(generation_service, analysis, items)
+        elif step in (4, 5):
+            if render_reply_result():
+                _run_coverage(generation_service, items)
         else:
             _render_result(analysis)
         if render_privacy_notice:
             with st.expander("隐私与测试说明", expanded=False):
                 render_privacy_notice()
+
+
+def _email_digest(subject: str, body: str) -> str:
+    raw = json.dumps([subject, body], ensure_ascii=False)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _run_coverage(
+    service: ReplyGenerationService,
+    items: tuple,
+) -> None:
+    st.session_state["reply__coverage_error"] = ""
+    st.session_state["reply__coverage_status"] = "running"
+    started = time.perf_counter()
+    try:
+        with st.spinner("正在独立检查回复覆盖情况…"):
+            result = service.check_coverage(
+                items=items,
+                decisions=dict(st.session_state.get("reply__decisions", {})),
+                subject=st.session_state["reply__subject"],
+                body=st.session_state["reply__body"],
+            )
+        st.session_state["reply__coverage"] = result
+        st.session_state["reply__summary"] = (
+            f"本次回复覆盖 {result.covered_count} / "
+            f"{result.total_count} 项"
+        )
+        st.session_state["reply__coverage_status"] = "success"
+        st.session_state["reply__coverage_digest"] = _email_digest(
+            st.session_state["reply__subject"],
+            st.session_state["reply__body"],
+        )
+        st.session_state["reply__coverage_duration"] = (
+            time.perf_counter() - started
+        )
+        st.session_state["reply__coverage_tokens"] = result.usage_tokens
+    except AIServiceError:
+        st.session_state["reply__coverage"] = None
+        st.session_state["reply__coverage_status"] = "error"
+        st.session_state["reply__coverage_error"] = (
+            "覆盖检查暂时不可用，请重新检查。"
+        )
+    st.session_state["reply__step"] = 5
+    st.rerun()
+
+
+def _generate_and_check(
+    service: ReplyGenerationService,
+    analysis: IncomingEmailAnalysis,
+    items: tuple,
+) -> None:
+    st.session_state["reply__step"] = 4
+    st.session_state["reply__generation_status"] = "running"
+    st.session_state["reply__generation_error"] = ""
+    started = time.perf_counter()
+    sender = SenderDetails(
+        name=str(st.session_state.get("shared_sender_name", "")),
+        job_title=str(st.session_state.get("shared_job_title", "")),
+        company=str(st.session_state.get("shared_company", "")),
+        contact_information=str(
+            st.session_state.get("shared_contact_information", "")
+        ),
+    )
+    try:
+        with st.spinner("正在根据已确认立场生成英文回复…"):
+            result = service.generate(
+                analysis=analysis,
+                items=items,
+                decisions=dict(st.session_state.get("reply__decisions", {})),
+                sender=sender,
+                country_region=str(
+                    st.session_state.get("reply__country_region", "")
+                ),
+            )
+        st.session_state["reply__generated_email"] = result
+        st.session_state["reply__subject"] = result.subject
+        st.session_state["reply__body"] = result.body
+        st.session_state["reply__generation_status"] = "success"
+        st.session_state["reply__generation_duration"] = (
+            time.perf_counter() - started
+        )
+        st.session_state["reply__generation_tokens"] = result.usage_tokens
+        st.session_state["reply__generation_digest"] = (
+            st.session_state.get("reply__decision_digest", "")
+        )
+    except AIServiceError as exc:
+        st.session_state["reply__generation_status"] = "error"
+        st.session_state["reply__generation_error"] = exc.user_message
+        st.session_state["reply__step"] = 3
+        st.rerun()
+    _run_coverage(service, items)

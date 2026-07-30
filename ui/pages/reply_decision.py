@@ -24,6 +24,30 @@ from ui.state import (
 STANCE_OPTIONS = tuple(STANCE_LABELS)
 
 
+def _invalidate_generated_reply() -> None:
+    for key in (
+        "reply__generated_email",
+        "reply__coverage",
+        "reply__generation_duration",
+        "reply__coverage_duration",
+        "reply__generation_tokens",
+        "reply__coverage_tokens",
+    ):
+        st.session_state[key] = None
+    for key in (
+        "reply__subject",
+        "reply__body",
+        "reply__summary",
+        "reply__generation_digest",
+        "reply__coverage_digest",
+        "reply__generation_error",
+        "reply__coverage_error",
+    ):
+        st.session_state[key] = ""
+    st.session_state["reply__generation_status"] = "idle"
+    st.session_state["reply__coverage_status"] = "idle"
+
+
 def _clear_decision_error() -> None:
     st.session_state["reply__decision_error"] = ""
 
@@ -102,6 +126,7 @@ def _save_decision(item: ReplyItem) -> bool:
         st.session_state["reply__decision_risk"] = None
         st.session_state["reply__decision_risk_confirmed_digest"] = ""
         st.session_state["reply__decision_summary"] = None
+        _invalidate_generated_reply()
     st.session_state["reply__decision_error"] = ""
     return True
 
@@ -114,6 +139,7 @@ def _clear_current(item_id: str) -> None:
     st.session_state["reply__decision_risk"] = None
     st.session_state["reply__decision_risk_confirmed_digest"] = ""
     st.session_state["reply__decision_summary"] = None
+    _invalidate_generated_reply()
     st.session_state["reply__decision_error"] = ""
     prefix = f"reply__decision_widget__{item_id}__"
     for key in tuple(st.session_state):
@@ -428,12 +454,14 @@ def _summary_list(
     )
 
 
-def render_reply_summary(items: tuple[ReplyItem, ...]) -> None:
+def render_reply_summary(items: tuple[ReplyItem, ...]) -> bool:
     decisions = dict(st.session_state.get("reply__decisions", {}))
     summary = build_decision_summary(items, decisions)
     st.session_state["reply__decision_summary"] = summary
     st.markdown("### 回复决策摘要")
     st.caption("Decision Summary · 仅整理您的决定，尚未生成回复邮件。")
+    if st.session_state.get("reply__generation_error"):
+        st.error(st.session_state["reply__generation_error"])
     _summary_list("已确认的回复事项", summary.decided, decisions)
     _summary_list("明确不回复的事项", summary.excluded, decisions)
     _summary_list(
@@ -463,8 +491,12 @@ def render_reply_summary(items: tuple[ReplyItem, ...]) -> None:
         st.success("回复立场已逐项确认，可以进入下一阶段。")
     else:
         st.warning("仍有必须回复的事项尚未完成。")
-    st.info(
-        "Phase 3B 到此结束。完整回复主题和正文将在 Phase 3C 中生成。"
+    generate = st.button(
+        "生成英文回复 · Generate Reply",
+        key="reply__generate_reply",
+        type="primary",
+        use_container_width=True,
+        disabled=not summary.ready,
     )
     left, right = st.columns(2)
     with left:
@@ -481,3 +513,4 @@ def render_reply_summary(items: tuple[ReplyItem, ...]) -> None:
             use_container_width=True,
             on_click=return_to_reply_analysis,
         )
+    return generate

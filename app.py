@@ -34,6 +34,7 @@ from localization_service import (
 )
 from services.scenario_service import ScenarioService
 from services.incoming_email_analysis import IncomingEmailAnalysisService
+from services.reply_generation_service import ReplyGenerationService
 from ui.pages.compose_supplier import render_supplier_workflow
 from ui.pages.home import render_home
 from ui.pages.reply import render_reply_workspace
@@ -928,10 +929,12 @@ if current_home_view == "compose_supplier":
     st.stop()
 
 if current_home_view == "reply_analysis":
+    reply_backend = DeepSeekEmailService(settings)
     render_reply_workspace(
         analysis_service=IncomingEmailAnalysisService(
-            DeepSeekEmailService(settings)
+            reply_backend
         ),
+        generation_service=ReplyGenerationService(reply_backend),
     )
     st.stop()
 

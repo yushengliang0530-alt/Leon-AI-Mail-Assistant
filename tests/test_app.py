@@ -8,6 +8,11 @@ from streamlit.testing.v1 import AppTest
 from ai_service import AIServiceError, EmailResult
 from config import APP_NAME_EN, APP_NAME_ZH, APP_VERSION
 from models.incoming_email import parse_incoming_email_analysis
+from models.reply_generation import CoverageItem, CoverageResult, GeneratedReply
+from services.reply_item_service import (
+    build_decision_summary,
+    normalize_reply_items,
+)
 from tests.test_incoming_email_analysis import VALID_ANALYSIS
 
 
@@ -131,7 +136,7 @@ class StreamlitAppTests(unittest.TestCase):
             app.button(key="reply__analyze").click().run(timeout=10)
 
             self.assertEqual(analyze_mock.call_count, 1)
-            self.assertEqual(app.session_state["reply__step"], 1)
+            self.assertEqual(app.session_state["reply__step"], 2)
             self.assertIn(
                 "The sender requests",
                 "\n".join(item.value for item in app.markdown),
@@ -210,7 +215,7 @@ class StreamlitAppTests(unittest.TestCase):
             self.assertEqual(analyze_mock.call_count, 1)
 
             app.button(key="reply__start_decisions").click().run(timeout=10)
-            self.assertEqual(app.session_state["reply__step"], 2)
+            self.assertEqual(app.session_state["reply__step"], 3)
             self.assertEqual(
                 len(app.session_state["reply__normalized_items"]), 1
             )
@@ -236,7 +241,9 @@ class StreamlitAppTests(unittest.TestCase):
             self.assertEqual(app.session_state["reply__step"], 3)
             rendered = "\n".join(item.value for item in app.markdown)
             self.assertIn("回复决策摘要", rendered)
-            self.assertIn("Phase 3B", "\n".join(i.value for i in app.info))
+            self.assertIsNotNone(
+                app.button(key="reply__generate_reply")
+            )
             self.assertNotIn("邮件正文", rendered)
 
             app.button(key="reply__summary_back").click().run(timeout=10)
@@ -285,7 +292,7 @@ class StreamlitAppTests(unittest.TestCase):
                 key="reply__decision_next__request_1"
             ).click().run(timeout=10)
 
-            self.assertEqual(app.session_state["reply__step"], 2)
+            self.assertEqual(app.session_state["reply__step"], 3)
             self.assertEqual(
                 app.session_state["reply__decision_risk"].risk_level,
                 "high",
@@ -302,6 +309,77 @@ class StreamlitAppTests(unittest.TestCase):
             ).click().run(timeout=10)
             self.assertEqual(app.session_state["reply__step"], 3)
             self.assertEqual(analyze_mock.call_count, 1)
+
+    def test_phase3c_generates_then_checks_and_edit_only_rechecks(self) -> None:
+        app = self.create_home()
+        analysis = parse_incoming_email_analysis(json.dumps(VALID_ANALYSIS))
+        items = normalize_reply_items(analysis)
+        decisions = {
+            items[0].item_id: {
+                "item_id": items[0].item_id,
+                "stance": "unable_to_confirm",
+                "reason": "Internal verification is pending.",
+                "include_in_reply": True,
+                "no_response_confirmed": False,
+            }
+        }
+        app.session_state["system__home_view"] = "reply_analysis"
+        app.session_state["reply__analysis"] = analysis
+        app.session_state["reply__analysis_digest"] = "same"
+        app.session_state["reply__source_digest"] = "same"
+        app.session_state["reply__normalized_items"] = items
+        app.session_state["reply__decisions"] = decisions
+        app.session_state["reply__decision_summary"] = (
+            build_decision_summary(items, decisions)
+        )
+        app.session_state["reply__step"] = 3
+        generated = GeneratedReply(
+            "Delivery Update",
+            "Dear Team,\n\nWe cannot currently confirm the revised date.",
+        )
+        coverage = CoverageResult(
+            items=(
+                CoverageItem(
+                    items[0].item_id,
+                    "postponed",
+                    "The reply explicitly says the date cannot be confirmed.",
+                ),
+            ),
+            addressed_count=0,
+            partial_count=0,
+            postponed_count=1,
+            not_addressed_count=0,
+            covered_count=1,
+            total_count=1,
+        )
+        with (
+            patch(
+                "ai_service.DeepSeekEmailService.generate_reply_email",
+                return_value=generated,
+            ) as generate_mock,
+            patch(
+                "ai_service.DeepSeekEmailService.check_reply_coverage",
+                return_value=coverage,
+            ) as coverage_mock,
+        ):
+            app.run(timeout=10)
+            app.button(key="reply__generate_reply").click().run(timeout=10)
+            self.assertEqual(app.session_state["reply__step"], 5)
+            self.assertEqual(generate_mock.call_count, 1)
+            self.assertEqual(coverage_mock.call_count, 1)
+            self.assertIn("Best regards,", app.session_state["reply__body"])
+            rendered = "\n".join(item.value for item in app.markdown)
+            self.assertIn("本次回复覆盖 1 / 1 项", rendered)
+
+            app.text_area(key="reply__body").set_value(
+                app.session_state["reply__body"] + "\nAdditional clarification."
+            ).run(timeout=10)
+            self.assertEqual(
+                app.session_state["reply__coverage_status"], "stale"
+            )
+            app.button(key="reply__recheck_coverage").click().run(timeout=10)
+            self.assertEqual(generate_mock.call_count, 1)
+            self.assertEqual(coverage_mock.call_count, 2)
 
     def test_reply_analysis_failure_keeps_original_email(self) -> None:
         app = self.create_home()

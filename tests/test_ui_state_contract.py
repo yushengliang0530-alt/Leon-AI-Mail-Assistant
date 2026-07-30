@@ -87,5 +87,5 @@ class UIStateImportContractTests(unittest.TestCase):
             state.start_reply_decisions(items)
         self.assertEqual(session["reply__normalized_items"], items)
         self.assertEqual(session["reply__current_item_index"], 0)
-        self.assertEqual(session["reply__step"], 2)
+        self.assertEqual(session["reply__step"], 3)
         self.assertEqual(session["reply__request_status"], "idle")
