@@ -33,8 +33,10 @@ from localization_service import (
     build_localization_guidance,
 )
 from services.scenario_service import ScenarioService
+from services.incoming_email_analysis import IncomingEmailAnalysisService
 from ui.pages.compose_supplier import render_supplier_workflow
 from ui.pages.home import render_home
+from ui.pages.reply import render_reply_workspace
 from ui.state import get_home_view, initialize_home_state, return_to_home
 
 st.set_page_config(
@@ -922,6 +924,14 @@ if current_home_view == "home":
 if current_home_view == "compose_supplier":
     render_supplier_workflow(
         scenario_service=ScenarioService(DeepSeekEmailService(settings)),
+    )
+    st.stop()
+
+if current_home_view == "reply_analysis":
+    render_reply_workspace(
+        analysis_service=IncomingEmailAnalysisService(
+            DeepSeekEmailService(settings)
+        ),
     )
     st.stop()
 

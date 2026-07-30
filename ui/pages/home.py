@@ -8,6 +8,7 @@ from config import APP_BRAND, APP_NAME_EN, APP_NAME_ZH
 from ui.state import (
     get_selected_home_action,
     open_legacy_improve,
+    open_reply_workspace,
     open_supplier_workflow,
     set_selected_home_action,
 )
@@ -27,14 +28,15 @@ def _action_button(
     title: str,
     description: str,
     prominent: bool = False,
+    on_click: Callable[[], None] | None = None,
 ) -> None:
     st.button(
         f"**{title}**  \n{description}",
         key=f"home__action__{action}",
         type="primary" if prominent else "secondary",
         use_container_width=True,
-        on_click=set_selected_home_action,
-        args=(action,),
+        on_click=on_click or set_selected_home_action,
+        args=() if on_click else (action,),
     )
 
 
@@ -44,10 +46,7 @@ def _render_selected_action() -> None:
         return
 
     with st.container(key="home__action_feedback"):
-        if selected == "reply":
-            st.markdown("#### 回复收到的邮件")
-            st.info("智能回复工作流将在 Phase 3 启用。")
-        elif selected in PHASE_2_ACTIONS:
+        if selected in PHASE_2_ACTIONS:
             st.markdown("#### 场景化写新邮件")
             st.info(
                 "场景化邮件流程将在 Phase 2 启用。"
@@ -307,9 +306,10 @@ def render_home(
         )
         _action_button(
             action="reply",
-            title="回复收到的邮件　·　开发中",
-            description="分析对方诉求、提取必须回复的问题，并协助生成完整回复。",
+            title="回复收到的邮件",
+            description="识别对方要求、必须回复的问题和潜在风险。",
             prominent=True,
+            on_click=open_reply_workspace,
         )
 
         st.markdown(

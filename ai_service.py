@@ -1,6 +1,6 @@
 """DeepSeek API client, response parsing, signatures, and safe error mapping."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import logging
 import re
@@ -18,6 +18,14 @@ from openai import (
 )
 
 from config import DeepSeekSettings
+from incoming_analysis_prompts import (
+    incoming_analysis_messages,
+    incoming_analysis_repair_messages,
+)
+from models.incoming_email import (
+    IncomingEmailAnalysis,
+    parse_incoming_email_analysis,
+)
 from communication_analysis_service import (
     CommunicationAnalysis,
     parse_communication_analysis,
@@ -412,3 +420,51 @@ class DeepSeekEmailService:
             usage_tokens=result.usage_tokens,
             communication_analysis=result.communication_analysis,
         )
+
+    def analyze_incoming_email(
+        self,
+        *,
+        original_subject: str,
+        original_email: str,
+        country_region: str = "",
+    ) -> IncomingEmailAnalysis:
+        """Analyze untrusted incoming-email data without producing a reply."""
+        first_completion = self._completion(
+            incoming_analysis_messages(
+                original_subject=original_subject,
+                original_email=original_email,
+                country_region=country_region,
+            )
+        )
+        try:
+            parsed = parse_incoming_email_analysis(first_completion.content)
+            return replace(parsed, usage_tokens=first_completion.usage_tokens)
+        except (json.JSONDecodeError, ValueError):
+            logger.warning(
+                "Incoming email analysis parsing failed; attempting one repair"
+            )
+
+        repaired_completion = self._completion(
+            incoming_analysis_repair_messages(first_completion.content)
+        )
+        token_values = [
+            value
+            for value in (
+                first_completion.usage_tokens,
+                repaired_completion.usage_tokens,
+            )
+            if value is not None
+        ]
+        try:
+            parsed = parse_incoming_email_analysis(
+                repaired_completion.content
+            )
+            return replace(
+                parsed,
+                usage_tokens=sum(token_values) if token_values else None,
+            )
+        except (json.JSONDecodeError, ValueError):
+            raise AIServiceError(
+                "AI返回分析格式异常，请重新分析。",
+                "analysis_parse_error",
+            ) from None

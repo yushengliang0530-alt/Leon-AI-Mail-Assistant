@@ -1,3 +1,4 @@
+import json
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -6,6 +7,8 @@ from streamlit.testing.v1 import AppTest
 
 from ai_service import AIServiceError, EmailResult
 from config import APP_NAME_EN, APP_NAME_ZH, APP_VERSION
+from models.incoming_email import parse_incoming_email_analysis
+from tests.test_incoming_email_analysis import VALID_ANALYSIS
 
 
 APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
@@ -62,10 +65,6 @@ class StreamlitAppTests(unittest.TestCase):
                 "ai_service.DeepSeekEmailService.improve_email",
             ) as improve_mock,
         ):
-            app.button(key="home__action__reply").click().run(timeout=10)
-            self.assertTrue(
-                any("Phase 3" in item.value for item in app.info)
-            )
             app.button(key="home__action__supplier").click().run(timeout=10)
             self.assertTrue(
                 any(
@@ -79,6 +78,147 @@ class StreamlitAppTests(unittest.TestCase):
             )
             self.assertEqual(generate_mock.call_count, 0)
             self.assertEqual(improve_mock.call_count, 0)
+
+    def test_reply_home_entry_opens_real_analysis_workspace(self) -> None:
+        app = self.create_home()
+        app.button(key="home__action__reply").click().run(timeout=10)
+
+        self.assertFalse(list(app.exception))
+        rendered = "\n".join(item.value for item in app.markdown)
+        self.assertIn("收到邮件分析", rendered)
+        self.assertIsNotNone(
+            app.text_area(key="reply__original_email")
+        )
+        self.assertFalse(any("Phase 3" in item.value for item in app.info))
+
+    def test_reply_empty_and_high_risk_input_do_not_call_ai(self) -> None:
+        app = self.create_home()
+        app.button(key="home__action__reply").click().run(timeout=10)
+        with patch(
+            "ai_service.DeepSeekEmailService.analyze_incoming_email",
+        ) as analyze_mock:
+            app.button(key="reply__analyze").click().run(timeout=10)
+            self.assertEqual(analyze_mock.call_count, 0)
+            self.assertTrue(
+                any("请先粘贴" in item.value for item in app.error)
+            )
+
+            app.text_area(key="reply__original_email").set_value(
+                "API Key: sk-example-placeholder-123456789"
+            ).run(timeout=10)
+            app.button(key="reply__analyze").click().run(timeout=10)
+            self.assertEqual(analyze_mock.call_count, 0)
+            self.assertIsNotNone(
+                app.checkbox(key="reply__risk_confirmed")
+            )
+
+    def test_reply_analysis_is_saved_once_and_invalidated_by_edit(self) -> None:
+        app = self.create_home()
+        app.button(key="home__action__reply").click().run(timeout=10)
+        analysis = parse_incoming_email_analysis(
+            json.dumps(VALID_ANALYSIS)
+        )
+        with patch(
+            "ai_service.DeepSeekEmailService.analyze_incoming_email",
+            return_value=analysis,
+        ) as analyze_mock:
+            app.text_input(key="reply__original_subject").set_value(
+                "Updated Delivery Schedule Required"
+            )
+            app.text_area(key="reply__original_email").set_value(
+                "Please explain the delay and provide a recovery plan."
+            ).run(timeout=10)
+            app.button(key="reply__analyze").click().run(timeout=10)
+
+            self.assertEqual(analyze_mock.call_count, 1)
+            self.assertEqual(app.session_state["reply__step"], 2)
+            self.assertIn(
+                "The sender requests",
+                "\n".join(item.value for item in app.markdown),
+            )
+
+            app.run(timeout=10)
+            self.assertEqual(analyze_mock.call_count, 1)
+            app.button(key="reply__modify").click().run(timeout=10)
+            app.text_area(key="reply__original_email").set_value(
+                "Changed email content."
+            ).run(timeout=10)
+            self.assertIsNone(app.session_state["reply__analysis"])
+            self.assertEqual(
+                app.session_state["reply__risk_confirmed_digest"],
+                "",
+            )
+
+    def test_reply_high_risk_confirmation_is_bound_to_current_email(self) -> None:
+        app = self.create_home()
+        app.button(key="home__action__reply").click().run(timeout=10)
+        analysis = parse_incoming_email_analysis(json.dumps(VALID_ANALYSIS))
+        with patch(
+            "ai_service.DeepSeekEmailService.analyze_incoming_email",
+            return_value=analysis,
+        ) as analyze_mock:
+            app.text_area(key="reply__original_email").set_value(
+                "API Key: sk-example-placeholder-123456789"
+            ).run(timeout=10)
+            app.checkbox(key="reply__risk_confirmed").check().run(timeout=10)
+            app.button(key="reply__analyze").click().run(timeout=10)
+            self.assertEqual(analyze_mock.call_count, 1)
+            confirmed = app.session_state["reply__risk_confirmed_digest"]
+            self.assertTrue(confirmed)
+
+            app.button(key="reply__modify").click().run(timeout=10)
+            app.text_area(key="reply__original_email").set_value(
+                "API Key: sk-different-placeholder-987654321"
+            ).run(timeout=10)
+            self.assertEqual(
+                app.session_state["reply__risk_confirmed_digest"],
+                "",
+            )
+            self.assertIsNone(app.session_state["reply__analysis"])
+
+    def test_reply_clear_does_not_reset_supplier_state(self) -> None:
+        app = self.create_home()
+        app.session_state["compose__task_id"] = "supplier_plan_update"
+        app.button(key="home__action__reply").click().run(timeout=10)
+        app.session_state["reply__step"] = 2
+        app.session_state["reply__analysis"] = parse_incoming_email_analysis(
+            json.dumps(VALID_ANALYSIS)
+        )
+        app.session_state["reply__source_digest"] = "same"
+        app.session_state["reply__analysis_digest"] = "same"
+        app.run(timeout=10)
+        app.button(key="reply__clear").click().run(timeout=10)
+
+        self.assertEqual(
+            app.session_state["compose__task_id"],
+            "supplier_plan_update",
+        )
+        self.assertIsNone(app.session_state["reply__analysis"])
+
+    def test_reply_analysis_failure_keeps_original_email(self) -> None:
+        app = self.create_home()
+        app.button(key="home__action__reply").click().run(timeout=10)
+        original = "Please explain the delay."
+        with patch(
+            "ai_service.DeepSeekEmailService.analyze_incoming_email",
+            side_effect=AIServiceError(
+                "AI返回分析格式异常，请重新分析。",
+                "analysis_parse_error",
+            ),
+        ) as analyze_mock:
+            app.text_area(key="reply__original_email").set_value(
+                original
+            ).run(timeout=10)
+            app.button(key="reply__analyze").click().run(timeout=10)
+
+            self.assertEqual(analyze_mock.call_count, 1)
+            self.assertEqual(
+                app.text_area(key="reply__original_email").value,
+                original,
+            )
+            self.assertTrue(
+                any("格式异常" in item.value for item in app.error)
+            )
 
     def create_supplier_workflow(self) -> AppTest:
         app = self.create_home()

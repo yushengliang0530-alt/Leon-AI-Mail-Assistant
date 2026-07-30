@@ -11,19 +11,24 @@ __all__ = [
     "get_selected_home_action",
     "initialize_home_state",
     "open_legacy_improve",
+    "open_reply_workspace",
     "open_supplier_workflow",
+    "clear_reply_state",
+    "return_to_reply_input",
     "return_to_compose_review",
     "return_to_home",
     "save_compose_answer",
     "set_compose_step",
     "set_compose_task",
     "set_selected_home_action",
+    "sync_reply_source",
 ]
 
 
 HOME_VIEW_KEY = "system__home_view"
 HOME_ACTION_KEY = "system__selected_home_action"
 SUPPLIER_VIEW = "compose_supplier"
+REPLY_VIEW = "reply_analysis"
 
 COMPOSE_DEFAULTS = {
     "compose__scenario_family": "follow_up_supplier",
@@ -45,6 +50,22 @@ COMPOSE_DEFAULTS = {
     "compose__error": "",
 }
 
+REPLY_DEFAULTS = {
+    "reply__step": 1,
+    "reply__original_subject": "",
+    "reply__original_email": "",
+    "reply__country_region": "",
+    "reply__source_digest": "",
+    "reply__risk_result": None,
+    "reply__risk_confirmed_digest": "",
+    "reply__analysis": None,
+    "reply__analysis_digest": "",
+    "reply__request_status": "idle",
+    "reply__safe_error": "",
+    "reply__duration": None,
+    "reply__tokens": None,
+}
+
 
 def initialize_home_state() -> None:
     if HOME_VIEW_KEY not in st.session_state:
@@ -56,6 +77,9 @@ def initialize_home_state() -> None:
             st.session_state[key] = (
                 value.copy() if isinstance(value, dict) else value
             )
+    for key, value in REPLY_DEFAULTS.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
 
 def set_selected_home_action(action: str) -> None:
@@ -75,6 +99,45 @@ def open_legacy_improve() -> None:
 def open_supplier_workflow() -> None:
     st.session_state[HOME_VIEW_KEY] = SUPPLIER_VIEW
     st.session_state[HOME_ACTION_KEY] = None
+
+
+def open_reply_workspace() -> None:
+    st.session_state[HOME_VIEW_KEY] = REPLY_VIEW
+    st.session_state[HOME_ACTION_KEY] = None
+
+
+def sync_reply_source() -> None:
+    from services.incoming_email_analysis import source_digest
+
+    digest = source_digest(
+        str(st.session_state.get("reply__original_subject", "")),
+        str(st.session_state.get("reply__original_email", "")),
+        str(st.session_state.get("reply__country_region", "")),
+    )
+    if digest == st.session_state.get("reply__source_digest"):
+        return
+    st.session_state["reply__source_digest"] = digest
+    st.session_state["reply__risk_result"] = None
+    st.session_state["reply__risk_confirmed_digest"] = ""
+    st.session_state["reply__analysis"] = None
+    st.session_state["reply__analysis_digest"] = ""
+    st.session_state["reply__request_status"] = "idle"
+    st.session_state["reply__safe_error"] = ""
+    st.session_state["reply__duration"] = None
+    st.session_state["reply__tokens"] = None
+
+
+def return_to_reply_input() -> None:
+    st.session_state["reply__step"] = 1
+    st.session_state["reply__safe_error"] = ""
+
+
+def clear_reply_state() -> None:
+    for key in tuple(st.session_state):
+        if key.startswith("reply__"):
+            del st.session_state[key]
+    for key, value in REPLY_DEFAULTS.items():
+        st.session_state[key] = value
 
 
 def set_compose_task(task_id: str) -> None:

@@ -32,3 +32,13 @@ class UIStateImportContractTests(unittest.TestCase):
                 getattr(compose_supplier, function_name),
                 getattr(state, function_name),
             )
+
+    def test_reply_workspace_state_api_is_declared_and_callable(self) -> None:
+        for function_name in (
+            "open_reply_workspace",
+            "sync_reply_source",
+            "return_to_reply_input",
+            "clear_reply_state",
+        ):
+            self.assertIn(function_name, state.__all__)
+            self.assertTrue(callable(getattr(state, function_name, None)))

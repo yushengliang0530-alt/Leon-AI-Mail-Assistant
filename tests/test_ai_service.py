@@ -14,6 +14,7 @@ from ai_service import (
 )
 from config import DeepSeekSettings
 from prompts import generation_messages
+from tests.test_incoming_email_analysis import VALID_ANALYSIS
 
 
 def fake_response(content: str):
@@ -338,6 +339,68 @@ class DeepSeekEmailServiceTests(unittest.TestCase):
             )
         self.assertEqual(context.exception.code, "missing_api_key")
         self.assertNotIn("Traceback", context.exception.user_message)
+
+    def test_incoming_analysis_uses_dedicated_schema_and_counts_tokens(
+        self,
+    ) -> None:
+        fake_client = FakeClient([json.dumps(VALID_ANALYSIS)])
+        service = DeepSeekEmailService(
+            self.settings(),
+            client_factory=lambda _: fake_client,
+        )
+
+        result = service.analyze_incoming_email(
+            original_subject="Delivery",
+            original_email="Please confirm the revised date.",
+            country_region="Malaysia",
+        )
+
+        self.assertEqual(result.summary, VALID_ANALYSIS["summary"])
+        self.assertEqual(result.usage_tokens, 123)
+        request = fake_client.completions.calls[0]
+        self.assertIn(
+            "untrusted data",
+            request["messages"][0]["content"],
+        )
+
+    def test_incoming_analysis_repairs_once_then_fails_safely(self) -> None:
+        fake_client = FakeClient(["not json", "still not json"])
+        service = DeepSeekEmailService(
+            self.settings(),
+            client_factory=lambda _: fake_client,
+        )
+
+        with self.assertRaises(AIServiceError) as context:
+            service.analyze_incoming_email(
+                original_subject="",
+                original_email="Please confirm.",
+                country_region="",
+            )
+
+        self.assertEqual(context.exception.code, "analysis_parse_error")
+        self.assertEqual(len(fake_client.completions.calls), 2)
+        self.assertIn(
+            "incoming-email analysis JSON",
+            fake_client.completions.calls[1]["messages"][0]["content"],
+        )
+
+    def test_incoming_analysis_accepts_one_successful_repair(self) -> None:
+        fake_client = FakeClient(
+            ["broken", json.dumps(VALID_ANALYSIS)]
+        )
+        service = DeepSeekEmailService(
+            self.settings(),
+            client_factory=lambda _: fake_client,
+        )
+
+        result = service.analyze_incoming_email(
+            original_subject="Delivery",
+            original_email="Please confirm.",
+            country_region="",
+        )
+
+        self.assertEqual(result.usage_tokens, 246)
+        self.assertEqual(len(fake_client.completions.calls), 2)
 
 
 if __name__ == "__main__":
