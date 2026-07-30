@@ -155,6 +155,37 @@ class DeepSeekEmailServiceTests(unittest.TestCase):
         self.assertTrue(result.body.endswith("Sincerely,"))
         self.assertNotIn("Leon", result.body)
 
+    def test_scenario_generation_uses_facts_and_local_signature(self) -> None:
+        fake_client = FakeClient(
+            [
+                json.dumps(
+                    {
+                        "subject": "Updated Delivery Plan Required",
+                        "body": "Dear Supplier Team,\n\nPlease send the revised plan.",
+                    }
+                )
+            ]
+        )
+        service = DeepSeekEmailService(
+            self.settings(),
+            client_factory=lambda _: fake_client,
+        )
+        result = service.generate_scenario_email(
+            scenario_id="supplier_plan_update",
+            scenario_title="更新计划 / Request Plan Update",
+            facts={
+                "supplier_name": "ABC Components",
+                "requested_reply": "By Friday",
+                "required_action": "Send the revised plan.",
+            },
+            tone="Formal",
+            sender=SenderDetails(name="Alice Wang"),
+        )
+        self.assertTrue(result.body.endswith("Best regards,\nAlice Wang"))
+        prompt = fake_client.completions.calls[0]["messages"][1]["content"]
+        self.assertIn('"supplier_name": "ABC Components"', prompt)
+        self.assertNotIn('"project_name"', prompt)
+
     def test_improvement_preserves_content_and_uses_local_signature(self) -> None:
         fake_client = FakeClient(
             [

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import json
 import logging
 import re
-from typing import Callable
+from typing import Callable, Mapping
 
 from openai import (
     APIConnectionError,
@@ -22,7 +22,12 @@ from communication_analysis_service import (
     CommunicationAnalysis,
     parse_communication_analysis,
 )
-from prompts import generation_messages, improvement_messages, repair_messages
+from prompts import (
+    generation_messages,
+    improvement_messages,
+    repair_messages,
+    scenario_generation_messages,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -367,6 +372,36 @@ class DeepSeekEmailService:
             improvement_messages(
                 original_email=original_email,
                 tone=tone,
+                country_region=country_region,
+                localization_context=localization_context,
+            )
+        )
+        return EmailResult(
+            subject=result.subject,
+            body=append_signature(result.body, tone, sender),
+            usage_tokens=result.usage_tokens,
+            communication_analysis=result.communication_analysis,
+        )
+
+    def generate_scenario_email(
+        self,
+        *,
+        scenario_id: str,
+        scenario_title: str,
+        facts: Mapping[str, str],
+        tone: str,
+        sender: SenderDetails,
+        recipient: str = "",
+        country_region: str = "",
+        localization_context: str = "",
+    ) -> EmailResult:
+        result = self._request_and_parse(
+            scenario_generation_messages(
+                scenario_id=scenario_id,
+                scenario_title=scenario_title,
+                facts=dict(facts),
+                tone=tone,
+                recipient=recipient,
                 country_region=country_region,
                 localization_context=localization_context,
             )

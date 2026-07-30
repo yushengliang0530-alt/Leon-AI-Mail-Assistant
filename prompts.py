@@ -166,6 +166,65 @@ more than three improvement suggestions. Do not invent missing facts.
     ]
 
 
+def scenario_generation_messages(
+    *,
+    scenario_id: str,
+    scenario_title: str,
+    facts: dict[str, str],
+    tone: str,
+    recipient: str = "",
+    country_region: str = "",
+    localization_context: str = "",
+) -> list[dict[str, str]]:
+    """Build a facts-only prompt for a reviewed scenario policy."""
+    payload = {
+        "scenario_id": scenario_id,
+        "scenario_title": scenario_title,
+        "facts": facts,
+        "recipient": recipient.strip() or None,
+        "tone": tone,
+        "recipient_country_or_region": country_region.strip() or None,
+        "localization_context": localization_context.strip() or None,
+    }
+    user_prompt = f"""
+Write a concise English supplier follow-up email using only the structured facts
+below. The user completed a reviewed business workflow and did not provide an
+open-ended Prompt.
+
+Requirements:
+- Use every supplied fact accurately when it is relevant to the selected task.
+- Do not invent or infer any missing date, amount, project, purchase order,
+  promise, reason, responsibility, deadline, consequence, or commitment.
+- If a fact is absent, omit it. Do not add placeholders or ask questions in the
+  email.
+- Make the requested supplier action clear.
+- For a quotation follow-up, focus on the requested quotation and response.
+- For a delivery follow-up, focus on status, reliable delivery information, and
+  the requested action.
+- For a plan update, request an updated plan and the supplied next action.
+- For a delay explanation, request a factual explanation and recovery action
+  without making accusations.
+- Do not threaten, insult, or claim breach, liability, or fault.
+- Adapt wording to the selected tone and supplied recipient context.
+- Keep the email brief and avoid generic filler.
+- Do not generate a closing or signature; the application adds it locally.
+
+Tone guidance:
+{TONE_GUIDANCE[tone]}
+
+Structured input:
+{json.dumps(payload, ensure_ascii=False, indent=2)}
+
+Also return concise advisory communication_analysis using the required JSON
+schema. Assess the action, any supplied deadline, tone, commitment risk,
+ambiguity risk, and localization without inventing missing facts.
+""".strip()
+    return [
+        {"role": "system", "content": JSON_SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt},
+    ]
+
+
 def repair_messages(raw_content: str) -> list[dict[str, str]]:
     return [
         {

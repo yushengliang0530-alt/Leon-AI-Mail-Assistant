@@ -68,7 +68,10 @@ class StreamlitAppTests(unittest.TestCase):
             )
             app.button(key="home__action__supplier").click().run(timeout=10)
             self.assertTrue(
-                any("Phase 2" in item.value for item in app.info)
+                any(
+                    "通过几个业务问题" in item.value
+                    for item in app.markdown
+                )
             )
             app.button(key="home__action__preflight").click().run(timeout=10)
             self.assertTrue(
@@ -76,6 +79,107 @@ class StreamlitAppTests(unittest.TestCase):
             )
             self.assertEqual(generate_mock.call_count, 0)
             self.assertEqual(improve_mock.call_count, 0)
+
+    def create_supplier_workflow(self) -> AppTest:
+        app = self.create_home()
+        app.button(key="home__action__supplier").click().run(timeout=10)
+        app.button(key="home__open_supplier_workflow").click().run(timeout=10)
+        self.assertFalse(list(app.exception))
+        return app
+
+    def test_supplier_workflow_has_four_tasks_and_no_ai_navigation(self) -> None:
+        with patch(
+            "ai_service.DeepSeekEmailService.generate_scenario_email",
+        ) as generate_mock:
+            app = self.create_supplier_workflow()
+            for task_id in (
+                "supplier_quotation",
+                "supplier_delivery",
+                "supplier_plan_update",
+                "supplier_delay_explanation",
+            ):
+                self.assertIsNotNone(
+                    app.button(key=f"compose__task__{task_id}")
+                )
+            self.assertEqual(generate_mock.call_count, 0)
+
+    def test_supplier_dynamic_fields_and_advanced_options(self) -> None:
+        app = self.create_supplier_workflow()
+        app.button(key="compose__task__supplier_plan_update").click().run(
+            timeout=10
+        )
+        self.assertIsNotNone(
+            app.text_input(key="compose__field__supplier_name")
+        )
+        self.assertIsNotNone(
+            app.text_input(key="compose__field__original_plan_date")
+        )
+        self.assertIsNotNone(
+            app.text_area(key="compose__field__current_situation")
+        )
+        self.assertIsNotNone(
+            app.text_area(key="compose__field__required_action")
+        )
+        self.assertNotIn(
+            "compose__field__quotation_scope",
+            {item.key for item in app.text_area},
+        )
+        self.assertTrue(
+            any(
+                "高级选项" in expander.label
+                for expander in app.expander
+            )
+        )
+
+    def test_supplier_missing_required_fact_does_not_call_ai(self) -> None:
+        app = self.create_supplier_workflow()
+        app.button(key="compose__task__supplier_quotation").click().run(
+            timeout=10
+        )
+        with patch(
+            "ai_service.DeepSeekEmailService.generate_scenario_email",
+        ) as generate_mock:
+            app.button(key="compose__generate").click().run(timeout=10)
+            self.assertEqual(generate_mock.call_count, 0)
+            self.assertTrue(
+                any("请填写供应商名称" in error.value for error in app.error)
+            )
+
+    def test_supplier_generate_click_calls_ai_once_and_keeps_result(self) -> None:
+        app = self.create_supplier_workflow()
+        app.button(key="compose__task__supplier_quotation").click().run(
+            timeout=10
+        )
+        app.text_input(key="compose__field__supplier_name").set_value(
+            "ABC Components"
+        )
+        app.text_area(key="compose__field__quotation_scope").set_value(
+            "Control panels"
+        )
+        app.text_input(key="compose__field__requested_reply").set_value(
+            "By Friday"
+        )
+        app.text_area(key="compose__field__required_action").set_value(
+            "Send the formal quotation."
+        )
+        mocked = EmailResult(
+            subject="Quotation Follow-up",
+            body="Please send the quotation.\n\nBest regards,",
+            usage_tokens=245,
+        )
+        with patch(
+            "ai_service.DeepSeekEmailService.generate_scenario_email",
+            return_value=mocked,
+        ) as generate_mock:
+            app.button(key="compose__generate").click().run(timeout=10)
+            self.assertFalse(list(app.exception))
+            self.assertEqual(generate_mock.call_count, 1)
+            self.assertEqual(
+                app.text_input(key="compose__result_subject").value,
+                "Quotation Follow-up",
+            )
+            app.run(timeout=10)
+            self.assertEqual(generate_mock.call_count, 1)
 
     def test_more_scenarios_shows_three_planned_categories(self) -> None:
         app = self.create_home()

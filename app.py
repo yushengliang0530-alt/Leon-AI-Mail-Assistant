@@ -32,6 +32,8 @@ from localization_service import (
     LocalizationGuidance,
     build_localization_guidance,
 )
+from services.scenario_service import ScenarioService
+from ui.pages.compose_supplier import render_supplier_workflow
 from ui.pages.home import render_home
 from ui.state import get_home_view, initialize_home_state, return_to_home
 
@@ -906,12 +908,20 @@ def restore_page_inputs(widget_keys: list[str]) -> None:
             st.session_state[widget_key] = st.session_state[saved_key]
 
 
-if get_home_view() == "home":
+current_home_view = get_home_view()
+
+if current_home_view == "home":
     home_service_status = "已配置" if settings.is_configured else "未配置"
     render_home(
         ai_service_status=home_service_status,
         environment_label=environment_label,
         access_protection_label=access_protection_label,
+    )
+    st.stop()
+
+if current_home_view == "compose_supplier":
+    render_supplier_workflow(
+        scenario_service=ScenarioService(DeepSeekEmailService(settings)),
     )
     st.stop()
 

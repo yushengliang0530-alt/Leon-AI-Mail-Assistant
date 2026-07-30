@@ -8,12 +8,12 @@ from config import APP_BRAND, APP_NAME_EN, APP_NAME_ZH
 from ui.state import (
     get_selected_home_action,
     open_legacy_improve,
+    open_supplier_workflow,
     set_selected_home_action,
 )
 
 
 PHASE_2_ACTIONS = {
-    "supplier",
     "meeting",
     "progress",
     "approval",
@@ -52,6 +52,15 @@ def _render_selected_action() -> None:
             st.info(
                 "场景化邮件流程将在 Phase 2 启用。"
                 "当前阶段仅展示工作台首页原型。"
+            )
+        elif selected == "supplier":
+            st.markdown("#### 催供应商")
+            st.write("通过几个业务问题生成完整的供应商跟进邮件，无需编写 Prompt。")
+            st.button(
+                "开始催供应商邮件",
+                key="home__open_supplier_workflow",
+                type="primary",
+                on_click=open_supplier_workflow,
             )
         elif selected == "preflight":
             st.markdown("#### 发送前检查")
