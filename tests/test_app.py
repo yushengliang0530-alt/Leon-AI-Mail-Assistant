@@ -85,7 +85,7 @@ class StreamlitAppTests(unittest.TestCase):
 
         self.assertFalse(list(app.exception))
         rendered = "\n".join(item.value for item in app.markdown)
-        self.assertIn("收到邮件分析", rendered)
+        self.assertIn("回复收到的邮件", rendered)
         self.assertIsNotNone(
             app.text_area(key="reply__original_email")
         )
@@ -131,7 +131,7 @@ class StreamlitAppTests(unittest.TestCase):
             app.button(key="reply__analyze").click().run(timeout=10)
 
             self.assertEqual(analyze_mock.call_count, 1)
-            self.assertEqual(app.session_state["reply__step"], 2)
+            self.assertEqual(app.session_state["reply__step"], 1)
             self.assertIn(
                 "The sender requests",
                 "\n".join(item.value for item in app.markdown),
@@ -180,7 +180,7 @@ class StreamlitAppTests(unittest.TestCase):
         app = self.create_home()
         app.session_state["compose__task_id"] = "supplier_plan_update"
         app.button(key="home__action__reply").click().run(timeout=10)
-        app.session_state["reply__step"] = 2
+        app.session_state["reply__step"] = 1
         app.session_state["reply__analysis"] = parse_incoming_email_analysis(
             json.dumps(VALID_ANALYSIS)
         )
@@ -194,6 +194,114 @@ class StreamlitAppTests(unittest.TestCase):
             "supplier_plan_update",
         )
         self.assertIsNone(app.session_state["reply__analysis"])
+
+    def test_reply_decision_workflow_stops_at_local_summary(self) -> None:
+        app = self.create_home()
+        app.button(key="home__action__reply").click().run(timeout=10)
+        analysis = parse_incoming_email_analysis(json.dumps(VALID_ANALYSIS))
+        with patch(
+            "ai_service.DeepSeekEmailService.analyze_incoming_email",
+            return_value=analysis,
+        ) as analyze_mock:
+            app.text_area(key="reply__original_email").set_value(
+                "Please explain the delay by Friday."
+            ).run(timeout=10)
+            app.button(key="reply__analyze").click().run(timeout=10)
+            self.assertEqual(analyze_mock.call_count, 1)
+
+            app.button(key="reply__start_decisions").click().run(timeout=10)
+            self.assertEqual(app.session_state["reply__step"], 2)
+            self.assertEqual(
+                len(app.session_state["reply__normalized_items"]), 1
+            )
+
+            epoch = app.session_state["reply__decision_widget_epoch"]
+            app.selectbox(
+                key=(
+                    f"reply__decision_widget__request_1__{epoch}__"
+                    "stance__display"
+                )
+            ).select("接受并确认").run(timeout=10)
+            app.text_area(
+                key=(
+                    f"reply__decision_widget__request_1__{epoch}__"
+                    "confirmed_facts"
+                )
+            ).set_value("We can provide the delay explanation.").run(timeout=10)
+            app.button(
+                key="reply__decision_next__request_1"
+            ).click().run(timeout=10)
+
+            self.assertEqual(analyze_mock.call_count, 1)
+            self.assertEqual(app.session_state["reply__step"], 3)
+            rendered = "\n".join(item.value for item in app.markdown)
+            self.assertIn("回复决策摘要", rendered)
+            self.assertIn("Phase 3B", "\n".join(i.value for i in app.info))
+            self.assertNotIn("邮件正文", rendered)
+
+            app.button(key="reply__summary_back").click().run(timeout=10)
+            restored = app.text_area(
+                key=(
+                    "reply__decision_widget__request_1__"
+                    f"{app.session_state['reply__decision_widget_epoch']}__"
+                    "confirmed_facts"
+                )
+            )
+            self.assertEqual(
+                restored.value,
+                "We can provide the delay explanation.",
+            )
+            self.assertEqual(analyze_mock.call_count, 1)
+
+    def test_reply_decision_high_risk_requires_current_confirmation(self) -> None:
+        app = self.create_home()
+        app.button(key="home__action__reply").click().run(timeout=10)
+        analysis = parse_incoming_email_analysis(json.dumps(VALID_ANALYSIS))
+        with patch(
+            "ai_service.DeepSeekEmailService.analyze_incoming_email",
+            return_value=analysis,
+        ) as analyze_mock:
+            app.text_area(key="reply__original_email").set_value(
+                "Please explain the delay."
+            ).run(timeout=10)
+            app.button(key="reply__analyze").click().run(timeout=10)
+            app.button(key="reply__start_decisions").click().run(timeout=10)
+            epoch = app.session_state["reply__decision_widget_epoch"]
+            app.selectbox(
+                key=(
+                    f"reply__decision_widget__request_1__{epoch}__"
+                    "stance__display"
+                )
+            ).select("接受并确认").run(timeout=10)
+            app.text_area(
+                key=(
+                    f"reply__decision_widget__request_1__{epoch}__"
+                    "confirmed_facts"
+                )
+            ).set_value(
+                "API Key: sk-qa-placeholder-123456789"
+            ).run(timeout=10)
+            app.button(
+                key="reply__decision_next__request_1"
+            ).click().run(timeout=10)
+
+            self.assertEqual(app.session_state["reply__step"], 2)
+            self.assertEqual(
+                app.session_state["reply__decision_risk"].risk_level,
+                "high",
+            )
+            self.assertIsNotNone(
+                app.checkbox(key="reply__decision_risk_confirmed")
+            )
+
+            app.checkbox(
+                key="reply__decision_risk_confirmed"
+            ).check().run(timeout=10)
+            app.button(
+                key="reply__decision_next__request_1"
+            ).click().run(timeout=10)
+            self.assertEqual(app.session_state["reply__step"], 3)
+            self.assertEqual(analyze_mock.call_count, 1)
 
     def test_reply_analysis_failure_keeps_original_email(self) -> None:
         app = self.create_home()

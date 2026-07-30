@@ -1,4 +1,4 @@
-"""Phase 3A two-step workspace for incoming-email analysis."""
+"""Phase 3 reply workspace: analysis followed by local decision guidance."""
 
 from collections.abc import Callable
 import html
@@ -15,10 +15,16 @@ from services.incoming_email_analysis import (
     IncomingEmailInputError,
     source_digest,
 )
+from services.reply_item_service import normalize_reply_items
+from ui.pages.reply_decision import (
+    render_reply_decisions,
+    render_reply_summary,
+)
 from ui.state import (
     clear_reply_state,
+    prepare_reply_reanalysis,
     return_to_home,
-    return_to_reply_input,
+    start_reply_decisions,
     sync_reply_source,
 )
 
@@ -50,7 +56,7 @@ def _inject_styles() -> None:
           solid #c7d3e6;border-radius:999px;background:#f8faff;color:#425978;
           font-size:.72rem;font-weight:700;white-space:nowrap;}
         .st-key-reply__workspace .reply-progress{display:grid;
-          grid-template-columns:1fr 1fr;gap:.55rem;margin-bottom:1.35rem;}
+          grid-template-columns:repeat(3,1fr);gap:.55rem;margin-bottom:1.35rem;}
         .st-key-reply__workspace .reply-progress span{padding:.62rem .75rem;
           border-bottom:2px solid var(--reply-line);color:#8995a5;font-size:.76rem;}
         .st-key-reply__workspace .reply-progress .active{border-color:
@@ -78,8 +84,9 @@ def _progress(step: int) -> None:
     st.markdown(
         f"""
         <div class="reply-progress">
-          <span class="{'active' if step == 1 else ''}">01　粘贴邮件</span>
-          <span class="{'active' if step == 2 else ''}">02　查看分析</span>
+          <span class="{'active' if step == 1 else ''}">01　分析来信</span>
+          <span class="{'active' if step == 2 else ''}">02　确认立场</span>
+          <span class="{'active' if step == 3 else ''}">03　决策摘要</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -190,7 +197,7 @@ def _render_input(service: IncomingEmailAnalysisService) -> None:
             st.session_state["reply__duration"] = time.perf_counter() - started
             st.session_state["reply__tokens"] = analysis.usage_tokens
             st.session_state["reply__request_status"] = "success"
-            st.session_state["reply__step"] = 2
+            st.session_state["reply__step"] = 1
             st.rerun()
         except (IncomingEmailInputError, AIServiceError) as exc:
             message = (
@@ -272,7 +279,22 @@ def _render_result(analysis: IncomingEmailAnalysis) -> None:
         meta.append(f"本次用量 {tokens} tokens")
     if meta:
         st.caption(" · ".join(meta))
-    st.info("下一阶段将支持逐项确认回复立场并生成完整回复。")
+    items = normalize_reply_items(analysis)
+    st.info(
+        f"已整理出 {len(items)} 个待处理事项。下一步将逐项确认您的回复立场，"
+        "不会在本阶段生成邮件。"
+    )
+
+    if st.button(
+        "开始逐项确认",
+        key="reply__start_decisions",
+        type="primary",
+        use_container_width=True,
+        disabled=not items,
+        on_click=start_reply_decisions,
+        args=(items,),
+    ):
+        st.rerun()
 
     left, middle, right = st.columns(3)
     with left:
@@ -280,14 +302,14 @@ def _render_result(analysis: IncomingEmailAnalysis) -> None:
             "修改原邮件",
             key="reply__modify",
             use_container_width=True,
-            on_click=return_to_reply_input,
+            on_click=prepare_reply_reanalysis,
         )
     with middle:
         st.button(
             "重新分析",
             key="reply__reanalyze",
             use_container_width=True,
-            on_click=return_to_reply_input,
+            on_click=prepare_reply_reanalysis,
         )
     with right:
         st.button(
@@ -316,11 +338,11 @@ def render_reply_workspace(
             <div class="reply-header">
               <div>
                 <div class="reply-kicker">LEON AI · REPLY WORKSPACE</div>
-                <h1>收到邮件分析</h1>
-                <div class="reply-sub">Incoming Email Analysis<br>
-                  先理解对方真正要求什么，再决定如何回复。</div>
+                <h1>回复收到的邮件</h1>
+                <div class="reply-sub">Reply Workspace<br>
+                  先理解来信，再逐项确认您的处理立场。</div>
               </div>
-              <div class="reply-task">回复收到的邮件 · {step}/2</div>
+              <div class="reply-task">回复收到的邮件 · {step}/3</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -332,11 +354,16 @@ def render_reply_workspace(
             and st.session_state.get("reply__analysis_digest")
             == st.session_state.get("reply__source_digest")
         )
-        if step == 2 and digest_valid:
-            _render_result(analysis)
-        else:
+        items = tuple(st.session_state.get("reply__normalized_items", ()))
+        if not digest_valid:
             st.session_state["reply__step"] = 1
             _render_input(analysis_service)
+        elif step == 2:
+            render_reply_decisions(items)
+        elif step == 3:
+            render_reply_summary(items)
+        else:
+            _render_result(analysis)
         if render_privacy_notice:
             with st.expander("隐私与测试说明", expanded=False):
                 render_privacy_notice()

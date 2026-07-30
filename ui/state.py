@@ -13,8 +13,14 @@ __all__ = [
     "open_legacy_improve",
     "open_reply_workspace",
     "open_supplier_workflow",
+    "clear_reply_decisions",
     "clear_reply_state",
+    "prepare_reply_reanalysis",
+    "return_to_reply_analysis",
+    "return_to_reply_decisions",
     "return_to_reply_input",
+    "set_reply_item_index",
+    "start_reply_decisions",
     "return_to_compose_review",
     "return_to_home",
     "save_compose_answer",
@@ -64,6 +70,16 @@ REPLY_DEFAULTS = {
     "reply__safe_error": "",
     "reply__duration": None,
     "reply__tokens": None,
+    "reply__normalized_items": (),
+    "reply__decisions": {},
+    "reply__decision_digest": "",
+    "reply__current_item_index": 0,
+    "reply__decision_risk": None,
+    "reply__decision_risk_confirmed_digest": "",
+    "reply__decision_summary": None,
+    "reply__decision_error": "",
+    "reply__show_all_items": False,
+    "reply__decision_widget_epoch": 0,
 }
 
 
@@ -79,7 +95,9 @@ def initialize_home_state() -> None:
             )
     for key, value in REPLY_DEFAULTS.items():
         if key not in st.session_state:
-            st.session_state[key] = value
+            st.session_state[key] = (
+                value.copy() if isinstance(value, dict) else value
+            )
 
 
 def set_selected_home_action(action: str) -> None:
@@ -125,11 +143,84 @@ def sync_reply_source() -> None:
     st.session_state["reply__safe_error"] = ""
     st.session_state["reply__duration"] = None
     st.session_state["reply__tokens"] = None
+    _clear_reply_decision_values()
 
 
 def return_to_reply_input() -> None:
     st.session_state["reply__step"] = 1
     st.session_state["reply__safe_error"] = ""
+
+
+def prepare_reply_reanalysis() -> None:
+    st.session_state["reply__analysis"] = None
+    st.session_state["reply__analysis_digest"] = ""
+    st.session_state["reply__request_status"] = "idle"
+    st.session_state["reply__safe_error"] = ""
+    st.session_state["reply__duration"] = None
+    st.session_state["reply__tokens"] = None
+    _clear_reply_decision_values()
+    st.session_state["reply__step"] = 1
+
+
+def _clear_reply_decision_widgets() -> None:
+    for key in tuple(st.session_state):
+        if key.startswith("reply__decision_widget__"):
+            del st.session_state[key]
+
+
+def _clear_reply_decision_values() -> None:
+    st.session_state["reply__normalized_items"] = ()
+    st.session_state["reply__decisions"] = {}
+    st.session_state["reply__decision_digest"] = ""
+    st.session_state["reply__current_item_index"] = 0
+    st.session_state["reply__decision_risk"] = None
+    st.session_state["reply__decision_risk_confirmed_digest"] = ""
+    st.session_state["reply__decision_summary"] = None
+    st.session_state["reply__decision_error"] = ""
+    st.session_state["reply__show_all_items"] = False
+    st.session_state["reply__decision_widget_epoch"] = (
+        int(st.session_state.get("reply__decision_widget_epoch", 0)) + 1
+    )
+    _clear_reply_decision_widgets()
+
+
+def start_reply_decisions(items: tuple[object, ...]) -> None:
+    st.session_state["reply__normalized_items"] = items
+    st.session_state["reply__current_item_index"] = 0
+    st.session_state["reply__decision_error"] = ""
+    st.session_state["reply__decision_widget_epoch"] = (
+        int(st.session_state.get("reply__decision_widget_epoch", 0)) + 1
+    )
+    st.session_state["reply__step"] = 2
+
+
+def set_reply_item_index(index: int) -> None:
+    items = tuple(st.session_state.get("reply__normalized_items", ()))
+    upper = max(0, len(items) - 1)
+    target = max(0, min(int(index), upper))
+    st.session_state["reply__current_item_index"] = target
+    st.session_state["reply__decision_widget_epoch"] = (
+        int(st.session_state.get("reply__decision_widget_epoch", 0)) + 1
+    )
+    st.session_state["reply__decision_error"] = ""
+
+
+def return_to_reply_analysis() -> None:
+    st.session_state["reply__step"] = 1
+    st.session_state["reply__decision_error"] = ""
+
+
+def return_to_reply_decisions() -> None:
+    st.session_state["reply__step"] = 2
+    st.session_state["reply__decision_widget_epoch"] = (
+        int(st.session_state.get("reply__decision_widget_epoch", 0)) + 1
+    )
+    st.session_state["reply__decision_error"] = ""
+
+
+def clear_reply_decisions() -> None:
+    _clear_reply_decision_values()
+    st.session_state["reply__step"] = 1
 
 
 def clear_reply_state() -> None:
