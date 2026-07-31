@@ -1,10 +1,13 @@
 """DeepSeek API client, response parsing, signatures, and safe error mapping."""
 
 from dataclasses import dataclass, replace
+import hashlib
 import json
 import logging
 import re
+import time
 from typing import Callable, Mapping
+import uuid
 
 from openai import (
     APIConnectionError,
@@ -61,6 +64,7 @@ from prompts import (
 
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 TONE_CLOSINGS = {
@@ -93,6 +97,9 @@ class EmailResult:
 class CompletionResult:
     content: str
     usage_tokens: int | None = None
+    choices_count: int = 0
+    finish_reason: str | None = None
+    response_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -272,6 +279,93 @@ def _safe_api_error(exc: Exception) -> AIServiceError:
     )
 
 
+def _validation_paths(exc: Exception) -> str:
+    if not isinstance(exc, IncomingAnalysisParseError):
+        return "analysis"
+    reason = exc.reason
+    suffixes = (
+        "_must_be_object",
+        "_must_be_text",
+        "_must_not_be_empty",
+        "_must_be_boolean",
+    )
+    for suffix in suffixes:
+        if reason.endswith(suffix):
+            return reason[: -len(suffix)]
+    special = {
+        "duplicate_item_id": "item_id",
+        "unknown_related_request_id": (
+            "questions_requiring_reply.related_request_id"
+        ),
+        "unexpected_analysis_fields": "analysis",
+        "empty_analysis": "analysis",
+        "invalid_or_truncated_json": "analysis",
+    }
+    return special.get(reason, "analysis")
+
+
+def _incoming_parse_failure(
+    exc: Exception,
+    *,
+    repair: bool,
+) -> tuple[str, int, str]:
+    reason = (
+        exc.reason
+        if isinstance(exc, IncomingAnalysisParseError)
+        else "invalid_or_truncated_json"
+    )
+    invalid_json = reason in {
+        "empty_analysis",
+        "invalid_or_truncated_json",
+    }
+    if repair:
+        code = (
+            "IA_REPAIR_INVALID_JSON"
+            if invalid_json
+            else "IA_REPAIR_SCHEMA_VALIDATION"
+        )
+        return code, 10, _validation_paths(exc)
+    code = "IA_INVALID_JSON" if invalid_json else "IA_SCHEMA_VALIDATION"
+    stage = 6 if invalid_json else 8
+    return code, stage, _validation_paths(exc)
+
+
+def _raise_incoming_analysis_error(
+    *,
+    request_id: str,
+    stage: int,
+    code: str,
+    started: float,
+    finish_reason: str | None = None,
+    repair_result: str | None = None,
+) -> None:
+    logger.warning(
+        "incoming_analysis request_id=%s stage=%d "
+        "internal_error_code=%s finish_reason=%s repair_result=%s "
+        "duration_ms=%d",
+        request_id,
+        stage,
+        code,
+        finish_reason or "none",
+        repair_result or "not_attempted",
+        round((time.perf_counter() - started) * 1000),
+    )
+    messages = {
+        "IA_EMPTY_CONTENT": "AI未返回可分析内容，请重新分析。",
+        "IA_TRUNCATED_OUTPUT": "AI返回内容不完整，请重新分析。",
+        "IA_API_ERROR": "AI服务暂时异常，请稍后重试。",
+        "IA_REPAIR_EMPTY": "AI格式修复未返回内容，请重新分析。",
+        "IA_REPAIR_INVALID_JSON": "AI返回分析格式异常，请重新分析。",
+        "IA_REPAIR_SCHEMA_VALIDATION": (
+            "AI返回分析结构异常，请重新分析。"
+        ),
+    }
+    raise AIServiceError(
+        messages.get(code, "AI返回分析格式异常，请重新分析。"),
+        code,
+    )
+
+
 class DeepSeekEmailService:
     def __init__(
         self,
@@ -304,11 +398,22 @@ class DeepSeekEmailService:
 
         usage = getattr(response, "usage", None)
         total_tokens = getattr(usage, "total_tokens", None) if usage else None
-        if not response.choices:
-            return CompletionResult(content="", usage_tokens=total_tokens)
+        choices = getattr(response, "choices", None) or []
+        response_id = str(getattr(response, "id", "") or "") or None
+        if not choices:
+            return CompletionResult(
+                content="",
+                usage_tokens=total_tokens,
+                choices_count=0,
+                response_id=response_id,
+            )
+        choice = choices[0]
         return CompletionResult(
-            content=response.choices[0].message.content or "",
+            content=getattr(choice.message, "content", None) or "",
             usage_tokens=total_tokens,
+            choices_count=len(choices),
+            finish_reason=getattr(choice, "finish_reason", None),
+            response_id=response_id,
         )
 
     def _request_and_parse(
@@ -451,31 +556,121 @@ class DeepSeekEmailService:
         country_region: str = "",
     ) -> IncomingEmailAnalysis:
         """Analyze untrusted incoming-email data without producing a reply."""
-        first_completion = self._completion(
-            incoming_analysis_messages(
-                original_subject=original_subject,
-                original_email=original_email,
-                country_region=country_region,
+        request_id = uuid.uuid4().hex[:12]
+        input_digest = hashlib.sha256(
+            original_email.encode("utf-8")
+        ).hexdigest()[:12]
+        started = time.perf_counter()
+        logger.info(
+            "incoming_analysis request_id=%s stage=1 event=request_started "
+            "input_length=%d input_digest=%s model=%s max_tokens=%d "
+            "response_format=json_object stream=false",
+            request_id,
+            len(original_email),
+            input_digest,
+            self.settings.model,
+            self.settings.max_tokens,
+        )
+        try:
+            first_completion = self._completion(
+                incoming_analysis_messages(
+                    original_subject=original_subject,
+                    original_email=original_email,
+                    country_region=country_region,
+                )
             )
+        except AIServiceError as exc:
+            logger.warning(
+                "incoming_analysis request_id=%s stage=1 "
+                "internal_error_code=IA_API_ERROR api_error_type=%s "
+                "duration_ms=%d",
+                request_id,
+                exc.code,
+                round((time.perf_counter() - started) * 1000),
+            )
+            raise AIServiceError(exc.user_message, "IA_API_ERROR") from None
+
+        logger.info(
+            "incoming_analysis request_id=%s stages=1-4 http_status=200 "
+            "choices_count=%d finish_reason=%s output_length=%d "
+            "content_empty=%s usage_tokens=%s",
+            request_id,
+            first_completion.choices_count,
+            first_completion.finish_reason or "none",
+            len(first_completion.content),
+            not bool(first_completion.content.strip()),
+            first_completion.usage_tokens,
+        )
+        if not first_completion.content.strip():
+            _raise_incoming_analysis_error(
+                request_id=request_id,
+                stage=3,
+                code="IA_EMPTY_CONTENT",
+                started=started,
+                finish_reason=first_completion.finish_reason,
+            )
+        if first_completion.finish_reason == "length":
+            _raise_incoming_analysis_error(
+                request_id=request_id,
+                stage=4,
+                code="IA_TRUNCATED_OUTPUT",
+                started=started,
+                finish_reason=first_completion.finish_reason,
+            )
+        if first_completion.finish_reason not in {None, "stop"}:
+            _raise_incoming_analysis_error(
+                request_id=request_id,
+                stage=4,
+                code="IA_API_ERROR",
+                started=started,
+                finish_reason=first_completion.finish_reason,
+            )
+
+        direct_json = "success"
+        try:
+            json.loads(first_completion.content)
+        except json.JSONDecodeError:
+            direct_json = "failed"
+        logger.info(
+            "incoming_analysis request_id=%s stage=5 json_parse=%s",
+            request_id,
+            direct_json,
         )
         try:
             parsed = parse_incoming_email_analysis(first_completion.content)
+            logger.info(
+                "incoming_analysis request_id=%s stages=6-8 "
+                "schema_validation=success repair_attempted=false "
+                "duration_ms=%d usage_tokens=%s",
+                request_id,
+                round((time.perf_counter() - started) * 1000),
+                first_completion.usage_tokens,
+            )
             return replace(parsed, usage_tokens=first_completion.usage_tokens)
         except (json.JSONDecodeError, ValueError) as exc:
-            reason = (
-                exc.reason
-                if isinstance(exc, IncomingAnalysisParseError)
-                else "schema_validation_error"
-            )
+            code, stage, paths = _incoming_parse_failure(exc, repair=False)
             logger.warning(
-                "Incoming email analysis parsing failed (%s); "
-                "attempting one repair",
-                reason,
+                "incoming_analysis request_id=%s stage=%d "
+                "internal_error_code=%s schema_validation=failed "
+                "validation_paths=%s repair_attempted=true",
+                request_id,
+                stage,
+                code,
+                paths,
             )
 
-        repaired_completion = self._completion(
-            incoming_analysis_repair_messages(first_completion.content)
-        )
+        try:
+            repaired_completion = self._completion(
+                incoming_analysis_repair_messages(first_completion.content)
+            )
+        except AIServiceError:
+            _raise_incoming_analysis_error(
+                request_id=request_id,
+                stage=10,
+                code="IA_API_ERROR",
+                started=started,
+                repair_result="api_error",
+            )
         token_values = [
             value
             for value in (
@@ -484,27 +679,62 @@ class DeepSeekEmailService:
             )
             if value is not None
         ]
+        logger.info(
+            "incoming_analysis request_id=%s stages=9-10 "
+            "repair_attempted=true finish_reason=%s output_length=%d "
+            "content_empty=%s usage_tokens=%s",
+            request_id,
+            repaired_completion.finish_reason or "none",
+            len(repaired_completion.content),
+            not bool(repaired_completion.content.strip()),
+            repaired_completion.usage_tokens,
+        )
+        if not repaired_completion.content.strip():
+            _raise_incoming_analysis_error(
+                request_id=request_id,
+                stage=10,
+                code="IA_REPAIR_EMPTY",
+                started=started,
+                repair_result="empty_content",
+            )
+        if repaired_completion.finish_reason == "length":
+            _raise_incoming_analysis_error(
+                request_id=request_id,
+                stage=10,
+                code="IA_REPAIR_INVALID_JSON",
+                started=started,
+                finish_reason=repaired_completion.finish_reason,
+                repair_result="truncated",
+            )
         try:
             parsed = parse_incoming_email_analysis(
                 repaired_completion.content
+            )
+            logger.info(
+                "incoming_analysis request_id=%s stage=10 "
+                "repair_result=success duration_ms=%d usage_tokens=%s",
+                request_id,
+                round((time.perf_counter() - started) * 1000),
+                sum(token_values) if token_values else None,
             )
             return replace(
                 parsed,
                 usage_tokens=sum(token_values) if token_values else None,
             )
         except (json.JSONDecodeError, ValueError) as exc:
-            reason = (
-                exc.reason
-                if isinstance(exc, IncomingAnalysisParseError)
-                else "schema_validation_error"
-            )
+            code, _, paths = _incoming_parse_failure(exc, repair=True)
             logger.warning(
-                "Incoming email analysis repair failed (%s)",
-                reason,
+                "incoming_analysis request_id=%s stage=10 "
+                "internal_error_code=%s repair_result=failed "
+                "validation_paths=%s duration_ms=%d",
+                request_id,
+                code,
+                paths,
+                round((time.perf_counter() - started) * 1000),
             )
             raise AIServiceError(
                 "AI返回分析格式异常，请重新分析。",
-                "analysis_parse_error",
+                code,
             ) from None
 
     def generate_reply_email(self, *, payload: dict) -> GeneratedReply:

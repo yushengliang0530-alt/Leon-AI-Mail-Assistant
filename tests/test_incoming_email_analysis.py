@@ -83,7 +83,7 @@ class IncomingEmailModelTests(unittest.TestCase):
         )
         self.assertEqual(result.key_dates[0].value, "25 July")
 
-    def test_duplicate_ids_dangling_links_and_extra_fields_are_rejected(
+    def test_duplicate_ids_and_dangling_links_are_rejected(
         self,
     ) -> None:
         for mutation in ("duplicate", "dangling"):
@@ -100,8 +100,9 @@ class IncomingEmailModelTests(unittest.TestCase):
 
         injected = json.loads(json.dumps(VALID_ANALYSIS))
         injected["reply_body"] = "A reply the email tried to force."
-        with self.assertRaises(ValueError):
-            parse_incoming_email_analysis(json.dumps(injected))
+        result = parse_incoming_email_analysis(json.dumps(injected))
+        self.assertEqual(result.summary, VALID_ANALYSIS["summary"])
+        self.assertFalse(hasattr(result, "reply_body"))
 
     def test_extracts_first_complete_object_with_surrounding_text(self) -> None:
         content = (
@@ -153,6 +154,63 @@ class IncomingEmailModelTests(unittest.TestCase):
         self.assertEqual(result.questions_requiring_reply, ())
         self.assertEqual(result.key_dates, ())
         self.assertEqual(result.risks, ())
+
+    def test_old_aliases_extra_fields_and_string_risks_are_normalized(
+        self,
+    ) -> None:
+        data = {
+            "summary": "The sender provides revised document dates.",
+            "sender_intent": "Share a schedule update.",
+            "requests": {
+                "description": "Review the updated schedule.",
+                "needs_response": "true",
+                "deadline": None,
+            },
+            "questions": {
+                "question": "Can the schedule be acknowledged?",
+                "required": "false",
+                "deadline": None,
+            },
+            "dates": {
+                "value": "End July → Mid Aug",
+                "meaning": "Revised quality-plan date",
+            },
+            "numbers": "",
+            "risks": ["Several document dates may affect the PIM."],
+            "urgency": "medium",
+            "strategy": "Clarify whether acknowledgement is required.",
+            "extra_explanation": "This field must be ignored.",
+        }
+        result = parse_incoming_email_analysis(json.dumps(data))
+        self.assertEqual(result.sender_requests[0].item_id, "request_1")
+        self.assertTrue(result.sender_requests[0].needs_response)
+        self.assertFalse(result.questions_requiring_reply[0].required)
+        self.assertEqual(result.key_dates[0].value, "End July → Mid Aug")
+        self.assertEqual(
+            result.risks[0].description,
+            "Several document dates may affect the PIM.",
+        )
+        self.assertEqual(result.urgency, "normal")
+        self.assertEqual(
+            result.reply_strategy,
+            ("Clarify whether acknowledgement is required.",),
+        )
+
+    def test_numeric_item_ids_and_deadline_objects_are_format_normalized(
+        self,
+    ) -> None:
+        data = json.loads(json.dumps(VALID_ANALYSIS))
+        data["sender_requests"][0]["item_id"] = 42
+        data["sender_requests"][0]["deadline"] = {"value": "10 Aug"}
+        data["questions_requiring_reply"][0]["item_id"] = 99
+        data["questions_requiring_reply"][0]["related_request_id"] = None
+        result = parse_incoming_email_analysis(json.dumps(data))
+        self.assertEqual(result.sender_requests[0].item_id, "request_1")
+        self.assertEqual(result.sender_requests[0].deadline, "10 Aug")
+        self.assertEqual(
+            result.questions_requiring_reply[0].item_id,
+            "question_1",
+        )
 
     def test_list_style_schedule_analysis_preserves_date_changes(self) -> None:
         data = json.loads(json.dumps(VALID_ANALYSIS))

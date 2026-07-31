@@ -22,6 +22,13 @@ ROOT_FIELDS = frozenset(
         "uncertainties",
     }
 )
+ROOT_ALIASES = {
+    "requests": "sender_requests",
+    "questions": "questions_requiring_reply",
+    "dates": "key_dates",
+    "numbers": "key_numbers",
+    "strategy": "reply_strategy",
+}
 
 
 @dataclass(frozen=True)
@@ -123,6 +130,12 @@ def _text(value: Any, name: str, *, allow_empty: bool = False) -> str:
 def _optional_text(value: Any, name: str) -> str | None:
     if value is None or value == "":
         return None
+    if isinstance(value, dict):
+        for key in ("value", "date", "deadline", "text"):
+            candidate = value.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+        raise IncomingAnalysisParseError(f"{name}_must_be_text")
     return _text(value, name)
 
 
@@ -244,6 +257,13 @@ def _risk_level(value: Any) -> tuple[str, bool]:
 
 
 def _risk(value: Any) -> tuple[AnalysisRisk, bool]:
+    if isinstance(value, str):
+        value = {
+            "category": "unspecified",
+            "level": "medium",
+            "description": value,
+            "suggestion": "",
+        }
     item = _object(value, "risk")
     level, uncertain_level = _risk_level(item.get("level"))
     return (
@@ -290,7 +310,11 @@ def _with_stable_ids(value: Any, prefix: str) -> list[Any]:
     }
     normalized: list[Any] = []
     for index, item in enumerate(items, start=1):
-        if not isinstance(item, dict) or item.get("item_id"):
+        if not isinstance(item, dict):
+            normalized.append(item)
+            continue
+        supplied_id = item.get("item_id")
+        if isinstance(supplied_id, str) and supplied_id.strip():
             normalized.append(item)
             continue
         candidate = f"{prefix}_{index}"
@@ -307,10 +331,13 @@ def parse_incoming_email_analysis(content: str) -> IncomingEmailAnalysis:
     """Parse and validate the model JSON without inventing fallback content."""
     if not isinstance(content, str) or not content.strip():
         raise IncomingAnalysisParseError("empty_analysis")
-    data = _first_json_object(content)
-    unknown_fields = set(data) - ROOT_FIELDS
-    if unknown_fields:
-        raise IncomingAnalysisParseError("unexpected_analysis_fields")
+    raw_data = _first_json_object(content)
+    data = {
+        key: value for key, value in raw_data.items() if key in ROOT_FIELDS
+    }
+    for alias, canonical in ROOT_ALIASES.items():
+        if canonical not in data and alias in raw_data:
+            data[canonical] = raw_data[alias]
 
     requests = tuple(
         _sender_request(item, index)

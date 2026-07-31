@@ -19,20 +19,16 @@ Return only one valid JSON object with exactly this structure:
   "sender_intent": "what the sender is trying to achieve",
   "sender_requests": [
     {
-      "item_id": "request_1",
       "description": "one distinct requested action",
       "deadline": null,
       "needs_response": true,
-      "source_hint": "short non-sensitive phrase",
       "uncertain": false
     }
   ],
   "questions_requiring_reply": [
     {
-      "item_id": "question_1",
       "question": "one issue that should be answered",
       "required": true,
-      "related_request_id": "request_1",
       "deadline": null,
       "uncertain": false
     }
@@ -53,7 +49,6 @@ Return only one valid JSON object with exactly this structure:
   ],
   "urgency": "low, normal, high, or urgent",
   "reply_strategy": ["short advisory action"],
-  "detected_subject": null,
   "uncertainties": []
 }
 
@@ -73,8 +68,7 @@ Rules:
 - Do not treat signatures, disclaimers, footers, or repeated quoted thread text
   as new requests.
 - Keep advice separate from facts. Mark uncertain items and explain uncertainty.
-- Use stable unique item_id values. Link questions by related_request_id, not list
-  position.
+- Do not generate technical item IDs. Python adds stable IDs after parsing.
 - Do not infer gender, religion, ethnicity, marital status, or other sensitive
   attributes from a name.
 - Do not write, draft, or suggest a reply email. Do not return reply subject/body.

@@ -18,29 +18,47 @@ from tests.test_incoming_email_analysis import VALID_ANALYSIS
 from tests.test_preflight import semantic_json
 
 
-def fake_response(content: str):
+def fake_response(
+    content: str | None,
+    *,
+    finish_reason: str = "stop",
+    choices: bool = True,
+):
     return SimpleNamespace(
+        id="mock-response-id",
         usage=SimpleNamespace(total_tokens=123),
-        choices=[
-            SimpleNamespace(
-                message=SimpleNamespace(content=content),
-            )
-        ]
+        choices=(
+            [
+                SimpleNamespace(
+                    message=SimpleNamespace(content=content),
+                    finish_reason=finish_reason,
+                )
+            ]
+            if choices
+            else []
+        ),
     )
 
 
 class FakeCompletions:
-    def __init__(self, contents: list[str]) -> None:
+    def __init__(self, contents: list[object]) -> None:
         self.contents = list(contents)
         self.calls = []
 
     def create(self, **kwargs):
         self.calls.append(kwargs)
-        return fake_response(self.contents.pop(0))
+        value = self.contents.pop(0)
+        if isinstance(value, dict) and "_response" in value:
+            return fake_response(
+                value.get("content"),
+                finish_reason=str(value.get("finish_reason", "stop")),
+                choices=bool(value.get("choices", True)),
+            )
+        return fake_response(value)
 
 
 class FakeClient:
-    def __init__(self, contents: list[str]) -> None:
+    def __init__(self, contents: list[object]) -> None:
         self.completions = FakeCompletions(contents)
         self.chat = SimpleNamespace(completions=self.completions)
 
@@ -386,6 +404,11 @@ class DeepSeekEmailServiceTests(unittest.TestCase):
             "untrusted data",
             request["messages"][0]["content"],
         )
+        self.assertEqual(request["response_format"], {"type": "json_object"})
+        self.assertEqual(request["max_tokens"], 1600)
+        self.assertFalse(request["stream"])
+        self.assertNotIn("stop", request)
+        self.assertIn("JSON", request["messages"][0]["content"])
 
     def test_incoming_analysis_repairs_once_then_fails_safely(self) -> None:
         fake_client = FakeClient(["not json", "still not json"])
@@ -401,7 +424,7 @@ class DeepSeekEmailServiceTests(unittest.TestCase):
                 country_region="",
             )
 
-        self.assertEqual(context.exception.code, "analysis_parse_error")
+        self.assertEqual(context.exception.code, "IA_REPAIR_INVALID_JSON")
         self.assertEqual(len(fake_client.completions.calls), 2)
         self.assertIn(
             "IncomingEmailAnalysis",
@@ -449,7 +472,7 @@ class DeepSeekEmailServiceTests(unittest.TestCase):
         logs = "\n".join(captured.output)
         self.assertEqual(result.summary, VALID_ANALYSIS["summary"])
         self.assertEqual(len(fake_client.completions.calls), 2)
-        self.assertIn("invalid_or_truncated_json", logs)
+        self.assertIn("IA_INVALID_JSON", logs)
         self.assertNotIn(private_email, logs)
         self.assertNotIn("PRIVATE-MODEL-CONTENT", logs)
 
@@ -472,12 +495,96 @@ class DeepSeekEmailServiceTests(unittest.TestCase):
                 )
 
         logs = "\n".join(captured.output)
-        self.assertEqual(context.exception.code, "analysis_parse_error")
+        self.assertEqual(context.exception.code, "IA_REPAIR_INVALID_JSON")
         self.assertEqual(len(fake_client.completions.calls), 2)
-        self.assertIn("invalid_or_truncated_json", logs)
+        self.assertIn("IA_INVALID_JSON", logs)
         self.assertNotIn(private_email, logs)
         self.assertNotIn("PRIVATE-FIRST", logs)
         self.assertNotIn("PRIVATE-SECOND", logs)
+
+    def test_empty_analysis_content_has_distinct_error_code(self) -> None:
+        service = DeepSeekEmailService(
+            self.settings(),
+            client_factory=lambda _: FakeClient(
+                [{"_response": True, "content": None}]
+            ),
+        )
+        with self.assertRaises(AIServiceError) as context:
+            service.analyze_incoming_email(
+                original_subject="",
+                original_email="A short virtual schedule.",
+            )
+        self.assertEqual(context.exception.code, "IA_EMPTY_CONTENT")
+
+    def test_length_finish_reason_is_not_parsed_or_repaired(self) -> None:
+        fake_client = FakeClient(
+            [
+                {
+                    "_response": True,
+                    "content": '{"summary":"truncated"',
+                    "finish_reason": "length",
+                }
+            ]
+        )
+        service = DeepSeekEmailService(
+            self.settings(),
+            client_factory=lambda _: fake_client,
+        )
+        with self.assertRaises(AIServiceError) as context:
+            service.analyze_incoming_email(
+                original_subject="",
+                original_email="A short virtual schedule.",
+            )
+        self.assertEqual(context.exception.code, "IA_TRUNCATED_OUTPUT")
+        self.assertEqual(len(fake_client.completions.calls), 1)
+
+    def test_repair_empty_and_repair_schema_errors_are_distinct(self) -> None:
+        invalid_schema = json.dumps(
+            {"summary": [], "sender_intent": "Schedule update"}
+        )
+        cases = (
+            ("", "IA_REPAIR_EMPTY"),
+            (invalid_schema, "IA_REPAIR_SCHEMA_VALIDATION"),
+        )
+        for repaired, expected_code in cases:
+            with self.subTest(expected_code=expected_code):
+                fake_client = FakeClient(["not json", repaired])
+                service = DeepSeekEmailService(
+                    self.settings(),
+                    client_factory=lambda _: fake_client,
+                )
+                with self.assertRaises(AIServiceError) as context:
+                    service.analyze_incoming_email(
+                        original_subject="",
+                        original_email="A short virtual schedule.",
+                    )
+                self.assertEqual(context.exception.code, expected_code)
+
+    def test_safe_diagnostics_log_paths_without_field_values(self) -> None:
+        private_value = "PRIVATE-SCHEMA-VALUE"
+        invalid_schema = json.dumps(
+            {
+                "summary": [],
+                "sender_intent": private_value,
+            }
+        )
+        service = DeepSeekEmailService(
+            self.settings(),
+            client_factory=lambda _: FakeClient(
+                [invalid_schema, invalid_schema]
+            ),
+        )
+        with self.assertLogs("ai_service", level="WARNING") as captured:
+            with self.assertRaises(AIServiceError):
+                service.analyze_incoming_email(
+                    original_subject="Virtual",
+                    original_email="PRIVATE-EMAIL-VALUE",
+                )
+        logs = "\n".join(captured.output)
+        self.assertIn("summary", logs)
+        self.assertIn("IA_REPAIR_SCHEMA_VALIDATION", logs)
+        self.assertNotIn(private_value, logs)
+        self.assertNotIn("PRIVATE-EMAIL-VALUE", logs)
 
 
 if __name__ == "__main__":
