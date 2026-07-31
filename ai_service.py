@@ -23,6 +23,7 @@ from incoming_analysis_prompts import (
     incoming_analysis_repair_messages,
 )
 from models.incoming_email import (
+    IncomingAnalysisParseError,
     IncomingEmailAnalysis,
     parse_incoming_email_analysis,
 )
@@ -460,9 +461,16 @@ class DeepSeekEmailService:
         try:
             parsed = parse_incoming_email_analysis(first_completion.content)
             return replace(parsed, usage_tokens=first_completion.usage_tokens)
-        except (json.JSONDecodeError, ValueError):
+        except (json.JSONDecodeError, ValueError) as exc:
+            reason = (
+                exc.reason
+                if isinstance(exc, IncomingAnalysisParseError)
+                else "schema_validation_error"
+            )
             logger.warning(
-                "Incoming email analysis parsing failed; attempting one repair"
+                "Incoming email analysis parsing failed (%s); "
+                "attempting one repair",
+                reason,
             )
 
         repaired_completion = self._completion(
@@ -484,7 +492,16 @@ class DeepSeekEmailService:
                 parsed,
                 usage_tokens=sum(token_values) if token_values else None,
             )
-        except (json.JSONDecodeError, ValueError):
+        except (json.JSONDecodeError, ValueError) as exc:
+            reason = (
+                exc.reason
+                if isinstance(exc, IncomingAnalysisParseError)
+                else "schema_validation_error"
+            )
+            logger.warning(
+                "Incoming email analysis repair failed (%s)",
+                reason,
+            )
             raise AIServiceError(
                 "AI返回分析格式异常，请重新分析。",
                 "analysis_parse_error",

@@ -404,7 +404,7 @@ class DeepSeekEmailServiceTests(unittest.TestCase):
         self.assertEqual(context.exception.code, "analysis_parse_error")
         self.assertEqual(len(fake_client.completions.calls), 2)
         self.assertIn(
-            "incoming-email analysis JSON",
+            "IncomingEmailAnalysis",
             fake_client.completions.calls[1]["messages"][0]["content"],
         )
 
@@ -425,6 +425,59 @@ class DeepSeekEmailServiceTests(unittest.TestCase):
 
         self.assertEqual(result.usage_tokens, 246)
         self.assertEqual(len(fake_client.completions.calls), 2)
+
+    def test_truncated_analysis_repairs_once_without_logging_content(
+        self,
+    ) -> None:
+        private_email = "PRIVATE-INCOMING-EMAIL-CONTENT"
+        private_response = '{"summary": "PRIVATE-MODEL-CONTENT"'
+        fake_client = FakeClient(
+            [private_response, json.dumps(VALID_ANALYSIS)]
+        )
+        service = DeepSeekEmailService(
+            self.settings(),
+            client_factory=lambda _: fake_client,
+        )
+
+        with self.assertLogs("ai_service", level="WARNING") as captured:
+            result = service.analyze_incoming_email(
+                original_subject="Delivery",
+                original_email=private_email,
+                country_region="",
+            )
+
+        logs = "\n".join(captured.output)
+        self.assertEqual(result.summary, VALID_ANALYSIS["summary"])
+        self.assertEqual(len(fake_client.completions.calls), 2)
+        self.assertIn("invalid_or_truncated_json", logs)
+        self.assertNotIn(private_email, logs)
+        self.assertNotIn("PRIVATE-MODEL-CONTENT", logs)
+
+    def test_failed_repair_logs_only_safe_failure_categories(self) -> None:
+        private_email = "PRIVATE-FAILED-EMAIL"
+        fake_client = FakeClient(
+            ['{"summary": "PRIVATE-FIRST"', "PRIVATE-SECOND"]
+        )
+        service = DeepSeekEmailService(
+            self.settings(),
+            client_factory=lambda _: fake_client,
+        )
+
+        with self.assertLogs("ai_service", level="WARNING") as captured:
+            with self.assertRaises(AIServiceError) as context:
+                service.analyze_incoming_email(
+                    original_subject="",
+                    original_email=private_email,
+                    country_region="",
+                )
+
+        logs = "\n".join(captured.output)
+        self.assertEqual(context.exception.code, "analysis_parse_error")
+        self.assertEqual(len(fake_client.completions.calls), 2)
+        self.assertIn("invalid_or_truncated_json", logs)
+        self.assertNotIn(private_email, logs)
+        self.assertNotIn("PRIVATE-FIRST", logs)
+        self.assertNotIn("PRIVATE-SECOND", logs)
 
 
 if __name__ == "__main__":

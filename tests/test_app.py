@@ -14,7 +14,7 @@ from services.reply_item_service import (
     build_decision_summary,
     normalize_reply_items,
 )
-from tests.test_incoming_email_analysis import VALID_ANALYSIS
+from tests.test_incoming_email_analysis import LIST_STYLE_EMAIL, VALID_ANALYSIS
 from tests.test_preflight import semantic_json
 
 
@@ -403,6 +403,77 @@ class StreamlitAppTests(unittest.TestCase):
             self.assertTrue(
                 any("格式异常" in item.value for item in app.error)
             )
+
+    def test_list_style_email_renders_schedule_analysis_without_repeat(
+        self,
+    ) -> None:
+        data = json.loads(json.dumps(VALID_ANALYSIS))
+        data.update(
+            {
+                "summary": "The sender provides a document schedule update.",
+                "sender_intent": "Share current and revised document dates.",
+                "sender_requests": [],
+                "questions_requiring_reply": [],
+                "key_dates": [
+                    {
+                        "value": "17th July → 24th July",
+                        "meaning": (
+                            "Sub-supplier list original and current dates"
+                        ),
+                        "uncertain": False,
+                    },
+                    {
+                        "value": "End July → Mid Aug",
+                        "meaning": (
+                            "Quality plan and procedure schedule changes"
+                        ),
+                        "uncertain": False,
+                    },
+                ],
+                "risks": [
+                    {
+                        "category": "schedule",
+                        "level": "medium",
+                        "description": (
+                            "Several revised dates may affect the PIM."
+                        ),
+                        "suggestion": (
+                            "Confirm which changes require acknowledgement."
+                        ),
+                    }
+                ],
+                "reply_strategy": [
+                    "Acknowledge the schedule and clarify any required action."
+                ],
+                "uncertainties": [
+                    "The email does not explicitly request a reply."
+                ],
+            }
+        )
+        analysis = parse_incoming_email_analysis(json.dumps(data))
+        app = self.create_home()
+        app.button(key="home__action__reply").click().run(timeout=10)
+
+        with patch(
+            "ai_service.DeepSeekEmailService.analyze_incoming_email",
+            return_value=analysis,
+        ) as analyze_mock:
+            app.text_input(key="reply__original_subject").set_value(
+                "1008B SEPAT - M014 - PWT"
+            ).run(timeout=10)
+            app.text_area(key="reply__original_email").set_value(
+                LIST_STYLE_EMAIL
+            ).run(timeout=10)
+            app.button(key="reply__analyze").click().run(timeout=10)
+
+            self.assertEqual(analyze_mock.call_count, 1)
+            rendered = "\n".join(item.value for item in app.markdown)
+            self.assertIn("来信分析结果", rendered)
+            self.assertIn("17th July → 24th July", rendered)
+            self.assertIn("End July → Mid Aug", rendered)
+            self.assertIn("does not explicitly request a reply", rendered)
+            app.run(timeout=10)
+            self.assertEqual(analyze_mock.call_count, 1)
 
     def create_supplier_workflow(self) -> AppTest:
         app = self.create_home()

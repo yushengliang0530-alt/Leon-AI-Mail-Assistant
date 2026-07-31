@@ -1,8 +1,7 @@
-"""Strict structured model for analysis of an untrusted incoming email."""
+"""Structured model and safe normalizer for incoming-email analysis."""
 
 from dataclasses import dataclass
 import json
-import re
 from typing import Any
 
 
@@ -76,52 +75,82 @@ class IncomingEmailAnalysis:
     usage_tokens: int | None = None
 
 
-def _json_candidate(content: str) -> str:
-    candidate = content.strip()
-    candidate = re.sub(r"^```(?:json)?\s*", "", candidate, flags=re.I)
-    candidate = re.sub(r"\s*```$", "", candidate)
-    start = candidate.find("{")
-    end = candidate.rfind("}")
-    return candidate[start : end + 1] if start >= 0 and end > start else candidate
+class IncomingAnalysisParseError(ValueError):
+    """A categorized parse error that never contains model or user content."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+def _first_json_object(content: str) -> dict[str, Any]:
+    decoder = json.JSONDecoder()
+    for index, character in enumerate(content):
+        if character != "{":
+            continue
+        try:
+            value, _ = decoder.raw_decode(content[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            return value
+    raise IncomingAnalysisParseError("invalid_or_truncated_json")
 
 
 def _object(value: Any, name: str) -> dict[str, Any]:
     if not isinstance(value, dict):
-        raise ValueError(f"{name} must be an object")
+        raise IncomingAnalysisParseError(f"{name}_must_be_object")
     return value
 
 
-def _list(value: Any, name: str) -> list[Any]:
-    if not isinstance(value, list):
-        raise ValueError(f"{name} must be a list")
-    return value
+def _items(value: Any) -> list[Any]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
 
 
 def _text(value: Any, name: str, *, allow_empty: bool = False) -> str:
     if not isinstance(value, str):
-        raise ValueError(f"{name} must be text")
+        raise IncomingAnalysisParseError(f"{name}_must_be_text")
     clean = value.strip()
     if not clean and not allow_empty:
-        raise ValueError(f"{name} must not be empty")
+        raise IncomingAnalysisParseError(f"{name}_must_not_be_empty")
     return clean
 
 
 def _optional_text(value: Any, name: str) -> str | None:
-    if value is None:
+    if value is None or value == "":
         return None
     return _text(value, name)
 
 
 def _boolean(value: Any, name: str) -> bool:
-    if not isinstance(value, bool):
-        raise ValueError(f"{name} must be boolean")
-    return value
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "yes"}:
+            return True
+        if normalized in {"false", "no", ""}:
+            return False
+    raise IncomingAnalysisParseError(f"{name}_must_be_boolean")
 
 
-def _sender_request(value: Any) -> SenderRequest:
+def _sender_request(value: Any, index: int) -> SenderRequest:
+    if isinstance(value, str):
+        value = {
+            "description": value,
+            "needs_response": False,
+            "uncertain": True,
+        }
     item = _object(value, "sender_request")
     return SenderRequest(
-        item_id=_text(item.get("item_id"), "sender_request.item_id"),
+        item_id=_text(
+            item.get("item_id") or f"request_{index}",
+            "sender_request.item_id",
+        ),
         description=_text(
             item.get("description"),
             "sender_request.description",
@@ -131,7 +160,7 @@ def _sender_request(value: Any) -> SenderRequest:
             "sender_request.deadline",
         ),
         needs_response=_boolean(
-            item.get("needs_response"),
+            item.get("needs_response", False),
             "sender_request.needs_response",
         ),
         source_hint=_text(
@@ -140,18 +169,30 @@ def _sender_request(value: Any) -> SenderRequest:
             allow_empty=True,
         ),
         uncertain=_boolean(
-            item.get("uncertain"),
+            item.get("uncertain", True),
             "sender_request.uncertain",
         ),
     )
 
 
-def _reply_question(value: Any) -> ReplyQuestion:
+def _reply_question(value: Any, index: int) -> ReplyQuestion:
+    if isinstance(value, str):
+        value = {
+            "question": value,
+            "required": False,
+            "uncertain": True,
+        }
     item = _object(value, "reply_question")
     return ReplyQuestion(
-        item_id=_text(item.get("item_id"), "reply_question.item_id"),
+        item_id=_text(
+            item.get("item_id") or f"question_{index}",
+            "reply_question.item_id",
+        ),
         question=_text(item.get("question"), "reply_question.question"),
-        required=_boolean(item.get("required"), "reply_question.required"),
+        required=_boolean(
+            item.get("required", False),
+            "reply_question.required",
+        ),
         related_request_id=_optional_text(
             item.get("related_request_id"),
             "reply_question.related_request_id",
@@ -161,78 +202,160 @@ def _reply_question(value: Any) -> ReplyQuestion:
             "reply_question.deadline",
         ),
         uncertain=_boolean(
-            item.get("uncertain"),
+            item.get("uncertain", True),
             "reply_question.uncertain",
         ),
     )
 
 
 def _key_fact(value: Any, name: str) -> KeyFact:
+    if isinstance(value, str):
+        value = {"value": value, "meaning": "", "uncertain": True}
     item = _object(value, name)
     return KeyFact(
         value=_text(item.get("value"), f"{name}.value"),
-        meaning=_text(item.get("meaning"), f"{name}.meaning"),
-        uncertain=_boolean(item.get("uncertain"), f"{name}.uncertain"),
+        meaning=_text(
+            item.get("meaning", ""),
+            f"{name}.meaning",
+            allow_empty=True,
+        ),
+        uncertain=_boolean(
+            item.get("uncertain", True),
+            f"{name}.uncertain",
+        ),
     )
 
 
-def _risk(value: Any) -> AnalysisRisk:
+def _risk_level(value: Any) -> tuple[str, bool]:
+    level = _text(value or "medium", "risk.level").lower()
+    aliases = {
+        "low": "low",
+        "info": "low",
+        "informational": "low",
+        "medium": "medium",
+        "moderate": "medium",
+        "normal": "medium",
+        "warning": "medium",
+        "high": "high",
+        "critical": "high",
+        "severe": "high",
+    }
+    return aliases.get(level, "medium"), level not in aliases
+
+
+def _risk(value: Any) -> tuple[AnalysisRisk, bool]:
     item = _object(value, "risk")
-    level = _text(item.get("level"), "risk.level")
-    if level not in RISK_LEVELS:
-        raise ValueError("invalid risk level")
-    return AnalysisRisk(
-        category=_text(item.get("category"), "risk.category"),
-        level=level,
-        description=_text(item.get("description"), "risk.description"),
-        suggestion=_text(item.get("suggestion"), "risk.suggestion"),
+    level, uncertain_level = _risk_level(item.get("level"))
+    return (
+        AnalysisRisk(
+            category=_text(item.get("category"), "risk.category"),
+            level=level,
+            description=_text(item.get("description"), "risk.description"),
+            suggestion=_text(
+                item.get("suggestion", ""),
+                "risk.suggestion",
+                allow_empty=True,
+            ),
+        ),
+        uncertain_level,
     )
+
+
+def _urgency(value: Any) -> tuple[str, bool]:
+    level = _text(value or "normal", "urgency").lower()
+    aliases = {
+        "low": "low",
+        "minor": "low",
+        "normal": "normal",
+        "medium": "normal",
+        "moderate": "normal",
+        "high": "high",
+        "urgent": "urgent",
+        "critical": "urgent",
+        "immediate": "urgent",
+    }
+    return aliases.get(level, "normal"), level not in aliases
+
+
+def _text_items(value: Any, name: str) -> tuple[str, ...]:
+    return tuple(_text(item, f"{name}_item") for item in _items(value))
+
+
+def _with_stable_ids(value: Any, prefix: str) -> list[Any]:
+    items = _items(value)
+    used = {
+        str(item.get("item_id", "")).strip()
+        for item in items
+        if isinstance(item, dict) and item.get("item_id")
+    }
+    normalized: list[Any] = []
+    for index, item in enumerate(items, start=1):
+        if not isinstance(item, dict) or item.get("item_id"):
+            normalized.append(item)
+            continue
+        candidate = f"{prefix}_{index}"
+        suffix = 1
+        while candidate in used:
+            candidate = f"{prefix}_{index}_auto_{suffix}"
+            suffix += 1
+        used.add(candidate)
+        normalized.append({**item, "item_id": candidate})
+    return normalized
 
 
 def parse_incoming_email_analysis(content: str) -> IncomingEmailAnalysis:
     """Parse and validate the model JSON without inventing fallback content."""
     if not isinstance(content, str) or not content.strip():
-        raise ValueError("empty analysis")
-    data = _object(json.loads(_json_candidate(content)), "analysis")
-    if set(data) != ROOT_FIELDS:
-        raise ValueError("analysis fields do not match schema")
-
-    urgency = _text(data.get("urgency"), "urgency")
-    if urgency not in URGENCY_LEVELS:
-        raise ValueError("invalid urgency")
+        raise IncomingAnalysisParseError("empty_analysis")
+    data = _first_json_object(content)
+    unknown_fields = set(data) - ROOT_FIELDS
+    if unknown_fields:
+        raise IncomingAnalysisParseError("unexpected_analysis_fields")
 
     requests = tuple(
-        _sender_request(item)
-        for item in _list(data.get("sender_requests"), "sender_requests")
+        _sender_request(item, index)
+        for index, item in enumerate(
+            _with_stable_ids(data.get("sender_requests"), "request"),
+            start=1,
+        )
     )
     questions = tuple(
-        _reply_question(item)
-        for item in _list(
-            data.get("questions_requiring_reply"),
-            "questions_requiring_reply",
+        _reply_question(item, index)
+        for index, item in enumerate(
+            _with_stable_ids(
+                data.get("questions_requiring_reply"),
+                "question",
+            ),
+            start=1,
         )
     )
     all_ids = [item.item_id for item in requests] + [
         item.item_id for item in questions
     ]
     if len(all_ids) != len(set(all_ids)):
-        raise ValueError("duplicate item_id")
+        raise IncomingAnalysisParseError("duplicate_item_id")
     request_ids = {item.item_id for item in requests}
     if any(
         item.related_request_id
         and item.related_request_id not in request_ids
         for item in questions
     ):
-        raise ValueError("unknown related_request_id")
+        raise IncomingAnalysisParseError("unknown_related_request_id")
 
-    strategy = tuple(
-        _text(item, "reply_strategy item")
-        for item in _list(data.get("reply_strategy"), "reply_strategy")
+    parsed_risks = tuple(_risk(item) for item in _items(data.get("risks")))
+    urgency, urgency_was_unknown = _urgency(data.get("urgency"))
+    uncertainties = list(
+        _text_items(data.get("uncertainties"), "uncertainties")
     )
-    uncertainties = tuple(
-        _text(item, "uncertainties item")
-        for item in _list(data.get("uncertainties"), "uncertainties")
-    )
+    if urgency_was_unknown:
+        uncertainties.append(
+            "AI returned an unsupported urgency label; it was normalized."
+        )
+    if any(was_unknown for _, was_unknown in parsed_risks):
+        uncertainties.append(
+            "AI returned an unsupported risk label; it was normalized."
+        )
+
     return IncomingEmailAnalysis(
         summary=_text(data.get("summary"), "summary"),
         sender_intent=_text(data.get("sender_intent"), "sender_intent"),
@@ -240,20 +363,21 @@ def parse_incoming_email_analysis(content: str) -> IncomingEmailAnalysis:
         questions_requiring_reply=questions,
         key_dates=tuple(
             _key_fact(item, "key_date")
-            for item in _list(data.get("key_dates"), "key_dates")
+            for item in _items(data.get("key_dates"))
         ),
         key_numbers=tuple(
             _key_fact(item, "key_number")
-            for item in _list(data.get("key_numbers"), "key_numbers")
+            for item in _items(data.get("key_numbers"))
         ),
-        risks=tuple(
-            _risk(item) for item in _list(data.get("risks"), "risks")
-        ),
+        risks=tuple(risk for risk, _ in parsed_risks),
         urgency=urgency,
-        reply_strategy=strategy,
+        reply_strategy=_text_items(
+            data.get("reply_strategy"),
+            "reply_strategy",
+        ),
         detected_subject=_optional_text(
             data.get("detected_subject"),
             "detected_subject",
         ),
-        uncertainties=uncertainties,
+        uncertainties=tuple(uncertainties),
     )

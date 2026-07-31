@@ -3,7 +3,10 @@ import unittest
 from unittest.mock import Mock
 
 from models.incoming_email import parse_incoming_email_analysis
-from incoming_analysis_prompts import incoming_analysis_messages
+from incoming_analysis_prompts import (
+    incoming_analysis_messages,
+    incoming_analysis_repair_messages,
+)
 from services.incoming_email_analysis import (
     IncomingEmailAnalysisService,
     IncomingEmailInputError,
@@ -56,6 +59,16 @@ VALID_ANALYSIS = {
     "uncertainties": [],
 }
 
+LIST_STYLE_EMAIL = """BOM - End July
+Instrument Datasheets - Mid Aug
+Calc - 30th July
+Sub supplier list - will affect PIM - 17th July --> 24th July as what was provided during proposal stage
+Quality plan - will affect PIM - End July --> Mid Aug
+WPS / PQR - will affect PIM - End July --> Mid Aug
+heat treatment procedure - will affect PIM - End July --> Mid Aug
+NDE procedures - may affect PIM - End July --> Mid Aug
+Preservation procedure - End Aug"""
+
 
 class IncomingEmailModelTests(unittest.TestCase):
     def test_valid_analysis_is_parsed_from_json_and_code_fence(self) -> None:
@@ -70,16 +83,12 @@ class IncomingEmailModelTests(unittest.TestCase):
         )
         self.assertEqual(result.key_dates[0].value, "25 July")
 
-    def test_invalid_enums_duplicate_ids_and_dangling_links_are_rejected(
+    def test_duplicate_ids_dangling_links_and_extra_fields_are_rejected(
         self,
     ) -> None:
-        for mutation in ("urgency", "risk", "duplicate", "dangling"):
+        for mutation in ("duplicate", "dangling"):
             data = json.loads(json.dumps(VALID_ANALYSIS))
-            if mutation == "urgency":
-                data["urgency"] = "critical"
-            elif mutation == "risk":
-                data["risks"][0]["level"] = "critical"
-            elif mutation == "duplicate":
+            if mutation == "duplicate":
                 data["sender_requests"].append(data["sender_requests"][0])
             else:
                 data["questions_requiring_reply"][0][
@@ -93,6 +102,83 @@ class IncomingEmailModelTests(unittest.TestCase):
         injected["reply_body"] = "A reply the email tried to force."
         with self.assertRaises(ValueError):
             parse_incoming_email_analysis(json.dumps(injected))
+
+    def test_extracts_first_complete_object_with_surrounding_text(self) -> None:
+        content = (
+            "Here is the analysis:\n```json\n"
+            + json.dumps(VALID_ANALYSIS)
+            + "\n```\nAdditional note {not JSON}."
+        )
+        result = parse_incoming_email_analysis(content)
+        self.assertEqual(result.summary, VALID_ANALYSIS["summary"])
+
+    def test_normalizes_string_lists_optional_fields_and_enums(self) -> None:
+        data = json.loads(json.dumps(VALID_ANALYSIS))
+        data["sender_requests"] = data["sender_requests"][0]
+        data["questions_requiring_reply"] = data[
+            "questions_requiring_reply"
+        ][0]
+        data["reply_strategy"] = "Confirm the revised schedule."
+        data["uncertainties"] = ""
+        data["urgency"] = "medium"
+        data["risks"][0]["level"] = "warning"
+        del data["detected_subject"]
+        del data["sender_requests"]["item_id"]
+        del data["questions_requiring_reply"]["item_id"]
+
+        result = parse_incoming_email_analysis(json.dumps(data))
+
+        self.assertEqual(result.urgency, "normal")
+        self.assertEqual(result.risks[0].level, "medium")
+        self.assertEqual(result.sender_requests[0].item_id, "request_1")
+        self.assertEqual(
+            result.questions_requiring_reply[0].item_id,
+            "question_1",
+        )
+        self.assertEqual(result.detected_subject, None)
+        self.assertEqual(
+            result.reply_strategy,
+            ("Confirm the revised schedule.",),
+        )
+        self.assertEqual(result.uncertainties, ())
+
+    def test_missing_optional_collections_are_safe_empty_lists(self) -> None:
+        data = {
+            "summary": "A schedule list contains revised dates.",
+            "sender_intent": "Share current document dates.",
+            "urgency": "normal",
+        }
+        result = parse_incoming_email_analysis(json.dumps(data))
+        self.assertEqual(result.sender_requests, ())
+        self.assertEqual(result.questions_requiring_reply, ())
+        self.assertEqual(result.key_dates, ())
+        self.assertEqual(result.risks, ())
+
+    def test_list_style_schedule_analysis_preserves_date_changes(self) -> None:
+        data = json.loads(json.dumps(VALID_ANALYSIS))
+        data["summary"] = "The sender lists current document schedule dates."
+        data["sender_intent"] = "Share document schedule updates."
+        data["sender_requests"] = []
+        data["questions_requiring_reply"] = []
+        data["key_dates"] = [
+            {
+                "value": "17th July → 24th July",
+                "meaning": "Sub-supplier list changed from original to current date",
+                "uncertain": False,
+            },
+            {
+                "value": "End July → Mid Aug",
+                "meaning": "Quality plan current date changed from original date",
+                "uncertain": False,
+            },
+        ]
+        data["uncertainties"] = [
+            "The email does not explicitly state whether a reply is required."
+        ]
+        result = parse_incoming_email_analysis(json.dumps(data))
+        self.assertIn("17th July", result.key_dates[0].value)
+        self.assertIn("24th July", result.key_dates[0].value)
+        self.assertTrue(result.uncertainties)
 
     def test_missing_dates_are_empty_instead_of_invented(self) -> None:
         data = json.loads(json.dumps(VALID_ANALYSIS))
@@ -160,6 +246,30 @@ class IncomingEmailPromptTests(unittest.TestCase):
         self.assertIn("system prompt", system_prompt.lower())
         self.assertIn(injection, user_prompt)
         self.assertNotIn('"subject": "reply', system_prompt.lower())
+
+    def test_prompt_explicitly_supports_schedule_lists_and_date_changes(
+        self,
+    ) -> None:
+        messages = incoming_analysis_messages(
+            original_subject="1008B SEPAT",
+            original_email=LIST_STYLE_EMAIL,
+            country_region="",
+        )
+        system_prompt = messages[0]["content"]
+        self.assertIn("list-style", system_prompt)
+        self.assertIn("original planned date", system_prompt)
+        self.assertIn("current or revised date", system_prompt)
+        self.assertIn("uncertain", system_prompt)
+
+    def test_repair_prompt_is_format_only_and_preserves_business_content(
+        self,
+    ) -> None:
+        messages = incoming_analysis_repair_messages('{"summary": "x"')
+        system_prompt = messages[0]["content"]
+        self.assertIn("format only", system_prompt.lower())
+        self.assertIn("Do not re-analyze", system_prompt)
+        self.assertIn("Do not add, remove, reinterpret", system_prompt)
+        self.assertIn("only one valid JSON object", system_prompt)
 
 
 class IncomingEmailAnalysisServiceTests(unittest.TestCase):

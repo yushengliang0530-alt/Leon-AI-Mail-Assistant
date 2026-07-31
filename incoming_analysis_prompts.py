@@ -62,6 +62,14 @@ Rules:
   details, responsibility, commitments, or background.
 - Separate multiple requests and reply questions even when they share a sentence
   or are not written as questions.
+- Analyze list-style schedule and progress emails even when they contain no
+  question marks. Do not return an empty analysis merely because the message is
+  a list.
+- Recognize date changes written with arrows or paired dates. Preserve the
+  original planned date and current or revised date as stated, and distinguish
+  a confirmed delay from language that says an item may affect another milestone.
+- If the email does not explicitly request a reply, do not invent a request.
+  Record that point as uncertain and keep any related reply question optional.
 - Do not treat signatures, disclaimers, footers, or repeated quoted thread text
   as new requests.
 - Keep advice separate from facts. Mark uncertain items and explain uncertainty.
@@ -105,10 +113,20 @@ def incoming_analysis_repair_messages(
         {
             "role": "system",
             "content": (
-                INCOMING_ANALYSIS_SYSTEM_PROMPT
-                + "\n\nConvert the supplied model output to the required valid "
-                "incoming-email analysis JSON. Preserve only recoverable facts. "
-                "Do not create a reply email."
+                "You repair an existing IncomingEmailAnalysis response for "
+                "format only. Do not re-analyze the incoming email. Do not add, "
+                "remove, reinterpret, summarize, or otherwise change any "
+                "business content in the supplied model output. Repair JSON "
+                "syntax and schema types only. Keep every recoverable field and "
+                "fact. Return only one valid JSON object with these root fields: "
+                "summary, sender_intent, sender_requests, "
+                "questions_requiring_reply, key_dates, key_numbers, risks, "
+                "urgency, reply_strategy, detected_subject, uncertainties. "
+                "sender_requests, questions_requiring_reply, key_dates, "
+                "key_numbers, risks, reply_strategy, and uncertainties must be "
+                "arrays. urgency must be low, normal, high, or urgent. Each risk "
+                "level must be low, medium, or high. Preserve null where a fact "
+                "is absent. Do not return Markdown or a reply email."
             ),
         },
         {"role": "user", "content": raw_content},
