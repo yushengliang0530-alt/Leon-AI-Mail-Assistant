@@ -945,7 +945,7 @@ st.button(
     key="legacy__return_home",
     on_click=return_to_home,
 )
-st.caption("V1.0 兼容功能 · 当前打开：优化已有草稿")
+st.caption("草稿优化 · 当前打开：优化已有草稿")
 
 
 st.markdown(

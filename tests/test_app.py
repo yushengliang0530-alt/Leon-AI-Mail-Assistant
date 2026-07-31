@@ -41,50 +41,23 @@ class StreamlitAppTests(unittest.TestCase):
         self.assertFalse(list(app.exception))
         return app
 
-    def test_v2_home_identity_and_all_entries(self) -> None:
+    def test_v2_home_identity_and_production_entries(self) -> None:
         app = self.create_home()
         rendered = "\n".join(item.value for item in app.markdown)
         self.assertIn("Leon AI", rendered)
         self.assertIn(APP_NAME_ZH, rendered)
         self.assertIn(APP_NAME_EN, rendered)
-        self.assertIn("V2.0 DEVELOPMENT", rendered)
+        self.assertIn("V2.0", rendered)
+        self.assertNotIn("DEVELOPMENT", rendered)
+        self.assertNotIn("开发中", rendered)
+        self.assertNotIn("Phase", rendered)
         self.assertIn("今天有什么商务沟通需要完成", rendered)
         for action in (
             "reply",
             "supplier",
-            "meeting",
-            "progress",
-            "approval",
-            "schedule",
             "improve",
-            "preflight",
-            "scenarios",
         ):
             self.assertIsNotNone(app.button(key=f"home__action__{action}"))
-
-    def test_home_placeholders_do_not_call_ai(self) -> None:
-        app = self.create_home()
-        with (
-            patch(
-                "ai_service.DeepSeekEmailService.generate_email",
-            ) as generate_mock,
-            patch(
-                "ai_service.DeepSeekEmailService.improve_email",
-            ) as improve_mock,
-        ):
-            app.button(key="home__action__supplier").click().run(timeout=10)
-            self.assertTrue(
-                any(
-                    "通过几个业务问题" in item.value
-                    for item in app.markdown
-                )
-            )
-            app.button(key="home__action__preflight").click().run(timeout=10)
-            self.assertTrue(
-                any("Phase 4" in item.value for item in app.info)
-            )
-            self.assertEqual(generate_mock.call_count, 0)
-            self.assertEqual(improve_mock.call_count, 0)
 
     def test_reply_home_entry_opens_real_analysis_workspace(self) -> None:
         app = self.create_home()
@@ -649,14 +622,6 @@ class StreamlitAppTests(unittest.TestCase):
             latest_facts = generate_mock.call_args.kwargs["facts"]
             self.assertEqual(latest_facts["supplier_name"], "XYZ Components")
 
-    def test_more_scenarios_shows_three_planned_categories(self) -> None:
-        app = self.create_home()
-        app.button(key="home__action__scenarios").click().run(timeout=10)
-        rendered = "\n".join(item.value for item in app.markdown)
-        self.assertIn("采购与供应商", rendered)
-        self.assertIn("项目与工程", rendered)
-        self.assertIn("行政与管理", rendered)
-
     def test_legacy_improve_is_reachable_and_can_return_home(self) -> None:
         app = self.create_home()
         app.button(key="home__action__improve").click().run(timeout=10)
@@ -686,12 +651,12 @@ class StreamlitAppTests(unittest.TestCase):
             "请先粘贴需要优化的英文邮件。",
         )
 
-    def test_v1_product_identity_and_country_options(self) -> None:
+    def test_v2_product_identity_and_country_options(self) -> None:
         app = self.create_app()
         rendered = "\n".join(item.value for item in app.markdown)
         self.assertIn(APP_NAME_ZH, rendered)
         self.assertIn(APP_NAME_EN, rendered)
-        self.assertEqual(APP_VERSION, "2.0-dev")
+        self.assertEqual(APP_VERSION, "2.0")
         self.assertIn(
             "未指定 / Not Specified",
             app.selectbox(key="generate_country_region").options,

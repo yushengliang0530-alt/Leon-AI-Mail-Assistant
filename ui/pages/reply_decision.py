@@ -258,7 +258,7 @@ def _render_stance_fields(item: ReplyItem) -> None:
             placeholder="尚无可靠日期时请留空。",
         )
     elif chosen == "no_response":
-        st.warning("此事项将明确排除在 Phase 3C 的回复内容之外。")
+        st.warning("此事项将明确排除在生成的回复内容之外。")
         st.checkbox(
             "我确认不在后续回复中回应此事项。",
             key=_widget_key(item.item_id, "no_response_confirmed"),

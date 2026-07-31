@@ -1,5 +1,38 @@
 # Changelog
 
+## V2.0 — 2026-07-31
+
+### Added
+
+- Added the Leon AI Business Email Workspace production home
+- Added the guided Follow Up Supplier workflow
+- Added incoming email analysis and structured request extraction
+- Added item-by-item reply decision guidance
+- Added editable reply generation based only on confirmed facts
+- Added reply coverage checks with addressed, partial, postponed, and missing states
+- Added Send Ready preflight checks for coverage, actions, dates, attachments, salutations, tone, commitments, and sensitive risks
+- Added responsive production task cards with consistent business icons
+
+### Changed
+
+- Replaced development and Phase placeholders with completed production workflows
+- Updated the current product identity and documentation to V2.0
+- Kept the existing English draft optimization workflow available
+- Limited the production home to reply email, supplier follow-up, and draft optimization
+
+### Security
+
+- Preserved Streamlit Secrets management and optional access-code protection
+- Preserved local sensitive-content checks and high-risk confirmation
+- Automated tests continue to mock DeepSeek and do not incur API charges
+- Generated content remains subject to human review before sending
+
+### Known limitations
+
+- Supplier follow-up is the only production scenario-based new-email workflow
+- Outlook, Gmail, automatic sending, attachments, accounts, payments, databases, and history are not included
+- AI analysis and generated content can contain errors or omissions
+
 ## V1.0 — 2026-07-30
 
 ### Changed

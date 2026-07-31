@@ -9,13 +9,7 @@ from ui.pages import home
 EXPECTED_ACTIONS = {
     "reply",
     "supplier",
-    "meeting",
-    "progress",
-    "approval",
-    "schedule",
     "improve",
-    "preflight",
-    "scenarios",
 }
 
 
@@ -31,16 +25,11 @@ class HomeTaskCardTests(unittest.TestCase):
             self.assertTrue(card.description)
             self.assertRegex(card.icon, r"^[a-z][a-z0-9_]*$")
 
-    def test_high_frequency_cards_share_one_configuration_shape(self) -> None:
-        actions = tuple(
-            action
-            for row in home.HIGH_FREQUENCY_ROWS
-            for action in row
-        )
-        self.assertEqual(
-            actions,
-            ("supplier", "meeting", "progress", "approval"),
-        )
+    def test_production_workspace_cards_share_one_configuration_shape(
+        self,
+    ) -> None:
+        actions = home.WORKSPACE_ACTIONS
+        self.assertEqual(actions, ("supplier", "improve"))
         for action in actions:
             card = home.HOME_TASK_CARDS[action]
             self.assertIsInstance(card, home.TaskCard)
@@ -73,6 +62,21 @@ class HomeTaskCardTests(unittest.TestCase):
         self.assertNotIn("st.button(", source)
         self.assertIn("render_task_card(", source)
         self.assertNotIn("_action_button", inspect.getsource(home))
+
+    def test_home_contains_no_development_or_placeholder_entries(self) -> None:
+        source = inspect.getsource(home)
+        self.assertNotIn("DEVELOPMENT", source)
+        self.assertNotIn("开发中", source)
+        self.assertNotIn("Phase", source)
+        for action in (
+            "meeting",
+            "progress",
+            "approval",
+            "schedule",
+            "preflight",
+            "scenarios",
+        ):
+            self.assertNotIn(action, home.HOME_TASK_CARDS)
 
     def test_css_defines_fixed_icon_column_and_mobile_single_column(self) -> None:
         source = inspect.getsource(home.render_home)

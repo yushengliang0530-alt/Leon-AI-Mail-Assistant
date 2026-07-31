@@ -13,10 +13,10 @@ MAX_INPUT_CHARS = 8000
 APP_BRAND = "Leon AI"
 APP_NAME_ZH = "AI商务邮件工作台"
 APP_NAME_EN = "AI Business Email Workspace"
-APP_VERSION = "2.0-dev"
-APP_VERSION_LABEL = "V2.0 Development"
+APP_VERSION = "2.0"
+APP_VERSION_LABEL = "V2.0"
 
-# Compatibility aliases for the V1.0 page while Phase 1 is introduced.
+# Compatibility aliases used by the original generate and improve workspace.
 PRODUCT_NAME_ZH = APP_NAME_ZH
 PRODUCT_NAME_EN = APP_NAME_EN
 

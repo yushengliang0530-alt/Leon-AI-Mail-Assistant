@@ -1,11 +1,11 @@
-"""Leon AI V2.0 workspace home prototype."""
+"""Leon AI V2.0 production workspace home."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
 
 import streamlit as st
 
-from config import APP_BRAND, APP_NAME_EN, APP_NAME_ZH
+from config import APP_BRAND, APP_NAME_EN, APP_NAME_ZH, APP_VERSION_LABEL
 from ui.state import (
     get_selected_home_action,
     open_legacy_improve,
@@ -13,15 +13,6 @@ from ui.state import (
     open_supplier_workflow,
     set_selected_home_action,
 )
-
-
-PHASE_2_ACTIONS = {
-    "meeting",
-    "progress",
-    "approval",
-    "schedule",
-}
-
 
 @dataclass(frozen=True)
 class TaskCard:
@@ -50,56 +41,15 @@ HOME_TASK_CARDS = {
             "local_shipping",
         ),
         TaskCard(
-            "meeting",
-            "邀请会议",
-            "生成包含时间、地点、议程和确认要求的会议邮件。",
-            "calendar_month",
-        ),
-        TaskCard(
-            "progress",
-            "汇报项目进展",
-            "整理进展、风险、影响和下一步。",
-            "monitoring",
-        ),
-        TaskCard(
-            "approval",
-            "请求审批",
-            "说明背景、原因、影响和需要管理层决定的事项。",
-            "assignment_turned_in",
-        ),
-        TaskCard(
-            "schedule",
-            "确认交期或计划",
-            "确认时间、里程碑和需要对方采取的行动。",
-            "event_available",
-        ),
-        TaskCard(
             "improve",
             "优化已有草稿",
             "改善语法、结构、语气和行动要求。",
             "edit_note",
         ),
-        TaskCard(
-            "preflight",
-            "发送前检查",
-            "检查遗漏、承诺、敏感信息和表达风险。",
-            "verified_user",
-            status="开发中",
-        ),
-        TaskCard(
-            "scenarios",
-            "更多场景",
-            "采购、项目、行政和管理场景。",
-            "folder_open",
-        ),
     )
 }
 
-HIGH_FREQUENCY_ROWS = (
-    ("supplier", "meeting"),
-    ("progress", "approval"),
-)
-TOOL_ACTIONS = ("improve", "preflight", "scenarios")
+WORKSPACE_ACTIONS = ("supplier", "improve")
 
 
 def render_task_card(
@@ -127,13 +77,7 @@ def _render_selected_action() -> None:
         return
 
     with st.container(key="home__action_feedback"):
-        if selected in PHASE_2_ACTIONS:
-            st.markdown("#### 场景化写新邮件")
-            st.info(
-                "场景化邮件流程将在 Phase 2 启用。"
-                "当前阶段仅展示工作台首页原型。"
-            )
-        elif selected == "supplier":
+        if selected == "supplier":
             st.markdown("#### 催供应商")
             st.write("通过几个业务问题生成完整的供应商跟进邮件，无需编写 Prompt。")
             st.button(
@@ -142,31 +86,11 @@ def _render_selected_action() -> None:
                 type="primary",
                 on_click=open_supplier_workflow,
             )
-        elif selected == "preflight":
-            st.markdown("#### 发送前检查")
-            st.info("独立发送前检查将在 Phase 4 启用。")
-        elif selected == "scenarios":
-            st.markdown("#### 更多场景")
-            columns = st.columns(3)
-            for column, title, items in zip(
-                columns,
-                ("采购与供应商", "项目与工程", "行政与管理"),
-                (
-                    "催报价 · 催交期 · PO确认",
-                    "技术澄清 · 风险升级 · 文件审批",
-                    "会议安排 · 请求审批 · 客户来访",
-                ),
-                strict=True,
-            ):
-                with column:
-                    st.markdown(f"**{title}**")
-                    st.caption(items)
-            st.caption("完整场景化表单将在 Phase 2 开始逐步启用。")
         elif selected == "improve":
             st.markdown("#### 优化已有草稿")
-            st.write("现有 V1.0 草稿优化功能继续可用。")
+            st.write("优化语法、结构、语气和行动要求，并保留原邮件事实。")
             st.button(
-                "进入 V1.0 草稿优化",
+                "开始优化英文邮件",
                 key="home__open_legacy_improve",
                 type="primary",
                 on_click=open_legacy_improve,
@@ -378,21 +302,18 @@ def render_home(
         .st-key-home__workspace .st-key-home__action__reply button p {
             color:rgba(255,255,255,.82);
         }
-        .st-key-home__workspace .st-key-home__action__improve button,
-        .st-key-home__workspace .st-key-home__action__preflight button,
-        .st-key-home__workspace .st-key-home__action__scenarios button {
+        .st-key-home__workspace .st-key-home__action__supplier button,
+        .st-key-home__workspace .st-key-home__action__improve button {
             height:8rem;
             min-height:8rem;
             background:#f8faff;
         }
-        .st-key-home__workspace .st-key-home__action__improve button p,
-        .st-key-home__workspace .st-key-home__action__preflight button p,
-        .st-key-home__workspace .st-key-home__action__scenarios button p {
+        .st-key-home__workspace .st-key-home__action__supplier button p,
+        .st-key-home__workspace .st-key-home__action__improve button p {
             min-height:4.8rem;
         }
-        .st-key-home__workspace .st-key-home__action__improve button p strong,
-        .st-key-home__workspace .st-key-home__action__preflight button p strong,
-        .st-key-home__workspace .st-key-home__action__scenarios button p strong {
+        .st-key-home__workspace .st-key-home__action__supplier button p strong,
+        .st-key-home__workspace .st-key-home__action__improve button p strong {
             min-height:2.5rem;
         }
         .st-key-home__workspace .workspace-footer {
@@ -447,21 +368,18 @@ def render_home(
                 font-size:1.375rem;
             }
             .st-key-home__workspace div[data-testid="stButton"] > button p,
-            .st-key-home__workspace .st-key-home__action__improve button p,
-            .st-key-home__workspace .st-key-home__action__preflight button p,
-            .st-key-home__workspace .st-key-home__action__scenarios button p {
+            .st-key-home__workspace .st-key-home__action__supplier button p,
+            .st-key-home__workspace .st-key-home__action__improve button p {
                 min-height:0;
             }
             .st-key-home__workspace div[data-testid="stButton"] > button p strong,
-            .st-key-home__workspace .st-key-home__action__improve button p strong,
-            .st-key-home__workspace .st-key-home__action__preflight button p strong,
-            .st-key-home__workspace .st-key-home__action__scenarios button p strong {
+            .st-key-home__workspace .st-key-home__action__supplier button p strong,
+            .st-key-home__workspace .st-key-home__action__improve button p strong {
                 min-height:0;
             }
             .st-key-home__workspace .st-key-home__action__reply button,
-            .st-key-home__workspace .st-key-home__action__improve button,
-            .st-key-home__workspace .st-key-home__action__preflight button,
-            .st-key-home__workspace .st-key-home__action__scenarios button {
+            .st-key-home__workspace .st-key-home__action__supplier button,
+            .st-key-home__workspace .st-key-home__action__improve button {
                 height:auto;
                 min-height:5.5rem;
             }
@@ -484,7 +402,7 @@ def render_home(
                     <span class="workspace-mark">LA</span>
                     <span>{APP_BRAND}</span>
                 </div>
-                <span class="workspace-version">V2.0 DEVELOPMENT</span>
+                <span class="workspace-version">{APP_VERSION_LABEL}</span>
             </div>
             <div class="workspace-hero">
                 <div class="workspace-kicker">BUSINESS EMAIL WORKSPACE</div>
@@ -507,28 +425,13 @@ def render_home(
         )
 
         st.markdown(
-            '<div class="workspace-section">高频商务场景</div>',
+            '<div class="workspace-section">常用任务 · Everyday tasks</div>',
             unsafe_allow_html=True,
         )
-        for row in HIGH_FREQUENCY_ROWS:
-            left, right = st.columns(2)
-            for column, action in zip(
-                (left, right),
-                row,
-                strict=True,
-            ):
-                with column:
-                    render_task_card(card=HOME_TASK_CARDS[action])
-        render_task_card(card=HOME_TASK_CARDS["schedule"])
-
-        st.markdown(
-            '<div class="workspace-section">处理已有内容</div>',
-            unsafe_allow_html=True,
-        )
-        tool_columns = st.columns(3)
+        tool_columns = st.columns(2)
         for column, action in zip(
             tool_columns,
-            TOOL_ACTIONS,
+            WORKSPACE_ACTIONS,
             strict=True,
         ):
             with column:
@@ -537,14 +440,14 @@ def render_home(
         _render_selected_action()
 
         if render_additional_details:
-            with st.expander("产品说明 · About this development preview"):
+            with st.expander("产品说明 · About Leon AI"):
                 render_additional_details()
 
         st.markdown(
             f"""
             <div class="workspace-footer">
                 <strong>安全提醒</strong>：请勿输入密码、银行账号、证件号码、API Key 或其他敏感凭证。<br>
-                V2.0 目前处于开发阶段，部分工作流将在后续 Phase 逐步开放。
+                AI 生成和检查结果仅供辅助，发送前请人工确认事实、承诺和附件。
                 <div class="workspace-status">
                     <span>AI 服务：{ai_service_status}</span>
                     <span>运行环境：{environment_label}</span>
