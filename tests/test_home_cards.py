@@ -78,18 +78,59 @@ class HomeTaskCardTests(unittest.TestCase):
         ):
             self.assertNotIn(action, home.HOME_TASK_CARDS)
 
-    def test_css_defines_fixed_icon_column_and_mobile_single_column(self) -> None:
+    def test_css_defines_three_column_cards_and_mobile_single_column(
+        self,
+    ) -> None:
         source = inspect.getsource(home.render_home)
         compact = re.sub(r"\s+", " ", source)
         self.assertIn(
             "button > div > span { display:grid; "
-            "grid-template-columns:3.25rem minmax(0,1fr)",
+            "grid-template-columns:4rem minmax(0,1fr) 3rem",
             compact,
         )
+        self.assertIn("button > div > span::after", source)
+        self.assertIn('content:"→"', compact)
         self.assertIn('[data-testid="stIconMaterial"]', source)
         self.assertIn("@media (max-width:640px)", source)
         self.assertIn("flex-direction:column", compact)
         self.assertIn("overflow-x:hidden", compact)
+        self.assertIn("padding:1rem", compact)
+
+    def test_home_uses_approved_brand_and_section_hierarchy(self) -> None:
+        source = inspect.getsource(home.render_home)
+        self.assertIn("Leon AI Copilot", source)
+        self.assertIn("Business Communication Copilot", source)
+        self.assertIn("主要任务", source)
+        self.assertIn("PRIMARY WORKFLOW", source)
+        self.assertIn("常用任务", source)
+        self.assertIn("EVERYDAY TASKS", source)
+        self.assertIn("workspace-section-line", source)
+
+    def test_primary_card_has_explicit_high_contrast_text(self) -> None:
+        source = inspect.getsource(home.render_home)
+        compact = re.sub(r"\s+", " ", source)
+        self.assertIn(
+            ".st-key-home__action__reply button p strong { color:#fff",
+            compact,
+        )
+        self.assertIn("color:rgba(255,255,255,.88)", compact)
+        self.assertIn("padding:2rem 2.5rem", compact)
+
+    def test_everyday_cards_share_spacing_and_height(self) -> None:
+        source = inspect.getsource(home.render_home)
+        compact = re.sub(r"\s+", " ", source)
+        self.assertIn(".st-key-home__action__supplier button", compact)
+        self.assertIn(".st-key-home__action__improve button", compact)
+        self.assertIn("min-height:8rem", compact)
+        self.assertIn("padding:1.75rem 2rem", compact)
+
+    def test_footer_is_a_structured_security_bar(self) -> None:
+        source = inspect.getsource(home.render_home)
+        self.assertIn("workspace-security-icon", source)
+        self.assertIn("workspace-security-copy", source)
+        self.assertIn("workspace-security-link", source)
+        self.assertIn("<svg", source)
+        self.assertIn("stroke=\"currentColor\"", source)
 
 
 if __name__ == "__main__":
