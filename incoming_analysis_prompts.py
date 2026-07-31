@@ -49,6 +49,14 @@ Return only one valid JSON object with exactly this structure:
   ],
   "urgency": "low, normal, high, or urgent",
   "reply_strategy": ["short advisory action"],
+  "recommended_reply_items": [
+    {
+      "description": "a factual point worth covering in a reply",
+      "reason": "why a reply should cover this point",
+      "required": true,
+      "uncertain": false
+    }
+  ],
   "uncertainties": []
 }
 
@@ -65,6 +73,13 @@ Rules:
   a confirmed delay from language that says an item may affect another milestone.
 - If the email does not explicitly request a reply, do not invent a request.
   Record that point as uncertain and keep any related reply question optional.
+- Use recommended_reply_items when a status update, schedule update, risk notice,
+  delivery update, meeting confirmation, or similar message has no explicit
+  request or question but a business reply should still acknowledge or address
+  specific facts. Recommendations must not invent the user's position,
+  commitment, dates, responsibility, or actions.
+- Keep recommended_reply_items empty for a purely informational message when no
+  reply is reasonably needed. Do not duplicate sender_requests or questions.
 - Do not treat signatures, disclaimers, footers, or repeated quoted thread text
   as new requests.
 - Keep advice separate from facts. Mark uncertain items and explain uncertainty.
@@ -115,12 +130,14 @@ def incoming_analysis_repair_messages(
                 "fact. Return only one valid JSON object with these root fields: "
                 "summary, sender_intent, sender_requests, "
                 "questions_requiring_reply, key_dates, key_numbers, risks, "
-                "urgency, reply_strategy, detected_subject, uncertainties. "
+                "urgency, reply_strategy, recommended_reply_items, "
+                "detected_subject, uncertainties. "
                 "sender_requests, questions_requiring_reply, key_dates, "
-                "key_numbers, risks, reply_strategy, and uncertainties must be "
-                "arrays. urgency must be low, normal, high, or urgent. Each risk "
-                "level must be low, medium, or high. Preserve null where a fact "
-                "is absent. Do not return Markdown or a reply email."
+                "key_numbers, risks, reply_strategy, recommended_reply_items, "
+                "and uncertainties must be arrays. urgency must be low, normal, "
+                "high, or urgent. Each risk level must be low, medium, or high. "
+                "Preserve null where a fact is absent. Do not return Markdown or "
+                "a reply email."
             ),
         },
         {"role": "user", "content": raw_content},

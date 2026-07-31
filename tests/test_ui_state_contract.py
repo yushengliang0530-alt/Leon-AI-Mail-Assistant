@@ -105,3 +105,34 @@ class UIStateImportContractTests(unittest.TestCase):
         self.assertEqual(session["reply__current_item_index"], 0)
         self.assertEqual(session["reply__step"], 3)
         self.assertEqual(session["reply__request_status"], "idle")
+
+    def test_acknowledgement_start_is_explicitly_recorded(self) -> None:
+        from services.reply_item_service import build_acknowledgement_item
+
+        item = build_acknowledgement_item()
+        session = {**state.REPLY_DEFAULTS}
+        with patch.object(state.st, "session_state", session):
+            state.start_reply_decisions((item,))
+        self.assertTrue(session["reply__acknowledgement_requested"])
+        self.assertEqual(session["reply__normalized_items"], (item,))
+
+    def test_prepare_reanalysis_restores_preserved_source(self) -> None:
+        session = {
+            **state.REPLY_DEFAULTS,
+            "reply__original_subject": "",
+            "reply__original_email": "",
+            "reply__country_region": "",
+            "reply__preserved_subject": "Status Update",
+            "reply__preserved_email": "For your information.",
+            "reply__preserved_country_region": "Other / 其他地区",
+            "reply__analysis": object(),
+            "reply__step": 2,
+        }
+        with patch.object(state.st, "session_state", session):
+            state.prepare_reply_reanalysis()
+        self.assertEqual(session["reply__original_subject"], "Status Update")
+        self.assertEqual(
+            session["reply__original_email"], "For your information."
+        )
+        self.assertEqual(session["reply__step"], 1)
+        self.assertIsNone(session["reply__analysis"])

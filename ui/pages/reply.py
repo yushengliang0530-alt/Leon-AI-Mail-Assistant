@@ -17,7 +17,10 @@ from services.incoming_email_analysis import (
     IncomingEmailInputError,
     source_digest,
 )
-from services.reply_item_service import normalize_reply_items
+from services.reply_item_service import (
+    build_acknowledgement_item,
+    normalize_reply_items,
+)
 from services.reply_generation_service import ReplyGenerationService
 from services.preflight_service import (
     PreflightService,
@@ -209,6 +212,13 @@ def _render_input(service: IncomingEmailAnalysisService) -> None:
             st.session_state["reply__analysis"] = analysis
             st.session_state["reply__analysis_digest"] = digest
             st.session_state["reply__source_digest"] = digest
+            st.session_state["reply__preserved_subject"] = str(
+                st.session_state["reply__original_subject"]
+            )
+            st.session_state["reply__preserved_email"] = email
+            st.session_state["reply__preserved_country_region"] = str(
+                st.session_state["reply__country_region"]
+            )
             st.session_state["reply__duration"] = time.perf_counter() - started
             st.session_state["reply__tokens"] = analysis.usage_tokens
             st.session_state["reply__request_status"] = "success"
@@ -283,6 +293,16 @@ def _render_result(analysis: IncomingEmailAnalysis) -> None:
         "未识别到明确风险，但仍建议人工核对。",
     )
     _list_card("建议回复策略", list(analysis.reply_strategy), "暂无额外策略建议。")
+    _list_card(
+        "AI建议回复事项",
+        [
+            item.description
+            + (f"｜原因：{item.reason}" if item.reason else "")
+            + ("｜信息待确认" if item.uncertain else "")
+            for item in analysis.recommended_reply_items
+        ],
+        "未识别到额外建议回复事项。",
+    )
     _list_card("不确定事项", list(analysis.uncertainties), "未标记不确定事项。")
 
     duration = st.session_state.get("reply__duration")
@@ -295,21 +315,48 @@ def _render_result(analysis: IncomingEmailAnalysis) -> None:
     if meta:
         st.caption(" · ".join(meta))
     items = normalize_reply_items(analysis)
-    st.info(
-        f"已整理出 {len(items)} 个待处理事项。下一步将逐项确认您的回复立场，"
-        "不会在本阶段生成邮件。"
-    )
-
-    if st.button(
-        "开始逐项确认",
-        key="reply__start_decisions",
-        type="primary",
-        use_container_width=True,
-        disabled=not items,
-        on_click=start_reply_decisions,
-        args=(items,),
-    ):
-        st.rerun()
+    if items:
+        st.info(
+            f"已整理出 {len(items)} 个待处理事项。下一步将逐项确认您的回复立场，"
+            "不会在本阶段生成邮件。"
+        )
+        if st.button(
+            "开始逐项确认",
+            key="reply__start_decisions",
+            type="primary",
+            use_container_width=True,
+            on_click=start_reply_decisions,
+            args=(items,),
+        ):
+            st.rerun()
+    else:
+        st.warning(
+            "未检测到明确需要回复的问题。是否仍希望生成一封确认收到的回复？"
+        )
+        choice = st.radio(
+            "请选择下一步",
+            ("是，生成确认收到的回复", "返回修改邮件"),
+            index=None,
+            key="reply__zero_item_choice",
+        )
+        if choice == "是，生成确认收到的回复":
+            if st.button(
+                "继续逐项确认",
+                key="reply__continue_with_acknowledgement",
+                type="primary",
+                use_container_width=True,
+                on_click=start_reply_decisions,
+                args=((build_acknowledgement_item(),),),
+            ):
+                st.rerun()
+        elif choice == "返回修改邮件":
+            if st.button(
+                "返回修改邮件",
+                key="reply__return_to_modify_from_zero",
+                use_container_width=True,
+                on_click=prepare_reply_reanalysis,
+            ):
+                st.rerun()
 
     left, middle, right = st.columns(3)
     with left:

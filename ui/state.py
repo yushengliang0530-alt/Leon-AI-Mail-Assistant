@@ -63,6 +63,9 @@ REPLY_DEFAULTS = {
     "reply__original_subject": "",
     "reply__original_email": "",
     "reply__country_region": "",
+    "reply__preserved_subject": "",
+    "reply__preserved_email": "",
+    "reply__preserved_country_region": "",
     "reply__source_digest": "",
     "reply__risk_result": None,
     "reply__risk_confirmed_digest": "",
@@ -73,6 +76,8 @@ REPLY_DEFAULTS = {
     "reply__duration": None,
     "reply__tokens": None,
     "reply__normalized_items": (),
+    "reply__zero_item_choice": None,
+    "reply__acknowledgement_requested": False,
     "reply__decisions": {},
     "reply__decision_digest": "",
     "reply__current_item_index": 0,
@@ -184,6 +189,15 @@ def return_to_reply_input() -> None:
 
 
 def prepare_reply_reanalysis() -> None:
+    st.session_state["reply__original_subject"] = str(
+        st.session_state.get("reply__preserved_subject", "")
+    )
+    st.session_state["reply__original_email"] = str(
+        st.session_state.get("reply__preserved_email", "")
+    )
+    st.session_state["reply__country_region"] = str(
+        st.session_state.get("reply__preserved_country_region", "")
+    )
     st.session_state["reply__analysis"] = None
     st.session_state["reply__analysis_digest"] = ""
     st.session_state["reply__request_status"] = "idle"
@@ -202,6 +216,8 @@ def _clear_reply_decision_widgets() -> None:
 
 def _clear_reply_decision_values() -> None:
     st.session_state["reply__normalized_items"] = ()
+    st.session_state["reply__zero_item_choice"] = None
+    st.session_state["reply__acknowledgement_requested"] = False
     st.session_state["reply__decisions"] = {}
     st.session_state["reply__decision_digest"] = ""
     st.session_state["reply__current_item_index"] = 0
@@ -260,6 +276,10 @@ def invalidate_preflight() -> None:
 
 def start_reply_decisions(items: tuple[object, ...]) -> None:
     st.session_state["reply__normalized_items"] = items
+    st.session_state["reply__acknowledgement_requested"] = bool(
+        len(items) == 1
+        and getattr(items[0], "item_type", "") == "acknowledgement"
+    )
     st.session_state["reply__current_item_index"] = 0
     st.session_state["reply__decision_error"] = ""
     st.session_state["reply__decision_widget_epoch"] = (

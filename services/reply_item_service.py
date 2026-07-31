@@ -89,7 +89,49 @@ def normalize_reply_items(
                 uncertain=question.uncertain,
             )
         )
+    existing_descriptions = {
+        _normalized_description(item.description) for item in items
+    }
+    existing_descriptions.update(
+        _normalized_description(request.description)
+        for request in analysis.sender_requests
+    )
+    for recommendation in analysis.recommended_reply_items:
+        normalized = _normalized_description(recommendation.description)
+        if normalized in existing_descriptions:
+            continue
+        items.append(
+            ReplyItem(
+                item_id=recommendation.item_id,
+                item_type="recommendation",
+                description=recommendation.description,
+                deadline=None,
+                required=recommendation.required,
+                source_request_id=None,
+                source_question_ids=(),
+                uncertain=recommendation.uncertain,
+            )
+        )
+        existing_descriptions.add(normalized)
     return tuple(items)
+
+
+def _normalized_description(value: str) -> str:
+    return " ".join(value.split()).casefold()
+
+
+def build_acknowledgement_item() -> ReplyItem:
+    """Create the explicit user-requested zero-item acknowledgement."""
+    return ReplyItem(
+        item_id="acknowledgement_1",
+        item_type="acknowledgement",
+        description="确认已收到并阅读对方邮件",
+        deadline=None,
+        required=True,
+        source_request_id=None,
+        source_question_ids=(),
+        uncertain=False,
+    )
 
 
 def validate_decision(

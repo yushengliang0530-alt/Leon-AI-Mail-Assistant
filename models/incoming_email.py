@@ -18,6 +18,7 @@ ROOT_FIELDS = frozenset(
         "risks",
         "urgency",
         "reply_strategy",
+        "recommended_reply_items",
         "detected_subject",
         "uncertainties",
     }
@@ -67,6 +68,15 @@ class AnalysisRisk:
 
 
 @dataclass(frozen=True)
+class RecommendedReplyItem:
+    item_id: str
+    description: str
+    reason: str
+    required: bool
+    uncertain: bool
+
+
+@dataclass(frozen=True)
 class IncomingEmailAnalysis:
     summary: str
     sender_intent: str
@@ -77,6 +87,7 @@ class IncomingEmailAnalysis:
     risks: tuple[AnalysisRisk, ...]
     urgency: str
     reply_strategy: tuple[str, ...]
+    recommended_reply_items: tuple[RecommendedReplyItem, ...]
     detected_subject: str | None
     uncertainties: tuple[str, ...]
     usage_tokens: int | None = None
@@ -281,6 +292,40 @@ def _risk(value: Any) -> tuple[AnalysisRisk, bool]:
     )
 
 
+def _recommended_reply_item(
+    value: Any,
+    index: int,
+) -> RecommendedReplyItem:
+    if isinstance(value, str):
+        value = {
+            "description": value,
+            "reason": "",
+            "required": False,
+            "uncertain": True,
+        }
+    item = _object(value, "recommended_reply_item")
+    return RecommendedReplyItem(
+        item_id=f"recommendation_{index}",
+        description=_text(
+            item.get("description"),
+            "recommended_reply_item.description",
+        ),
+        reason=_text(
+            item.get("reason", ""),
+            "recommended_reply_item.reason",
+            allow_empty=True,
+        ),
+        required=_boolean(
+            item.get("required", False),
+            "recommended_reply_item.required",
+        ),
+        uncertain=_boolean(
+            item.get("uncertain", True),
+            "recommended_reply_item.uncertain",
+        ),
+    )
+
+
 def _urgency(value: Any) -> tuple[str, bool]:
     level = _text(value or "normal", "urgency").lower()
     aliases = {
@@ -401,6 +446,13 @@ def parse_incoming_email_analysis(content: str) -> IncomingEmailAnalysis:
         reply_strategy=_text_items(
             data.get("reply_strategy"),
             "reply_strategy",
+        ),
+        recommended_reply_items=tuple(
+            _recommended_reply_item(item, index)
+            for index, item in enumerate(
+                _items(data.get("recommended_reply_items")),
+                start=1,
+            )
         ),
         detected_subject=_optional_text(
             data.get("detected_subject"),

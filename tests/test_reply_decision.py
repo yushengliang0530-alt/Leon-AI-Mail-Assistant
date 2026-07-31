@@ -102,6 +102,86 @@ class ReplyItemServiceTests(unittest.TestCase):
             ["request_1", "request_2"],
         )
 
+    def test_recommendations_create_items_when_requests_and_questions_empty(
+        self,
+    ) -> None:
+        data = json.loads(json.dumps(VALID_ANALYSIS))
+        data["sender_requests"] = []
+        data["questions_requiring_reply"] = []
+        data["recommended_reply_items"] = [
+            {
+                "description": "Confirm receipt of the update.",
+                "reason": "The email contains a project status update.",
+                "required": True,
+                "uncertain": False,
+            },
+            {
+                "description": "Confirm whether the PIM impact will be assessed.",
+                "reason": "The schedule changes may affect the PIM.",
+                "required": True,
+                "uncertain": True,
+            },
+        ]
+        items = normalize_reply_items(
+            parse_incoming_email_analysis(json.dumps(data))
+        )
+        self.assertEqual(len(items), 2)
+        self.assertEqual(
+            [item.item_type for item in items],
+            ["recommendation", "recommendation"],
+        )
+        self.assertEqual(
+            [item.item_id for item in items],
+            ["recommendation_1", "recommendation_2"],
+        )
+
+    def test_pure_status_update_uses_recommended_reply_items(self) -> None:
+        data = json.loads(json.dumps(VALID_ANALYSIS))
+        data["sender_requests"] = []
+        data["questions_requiring_reply"] = []
+        data["summary"] = "The supplier shared revised document dates."
+        data["recommended_reply_items"] = [
+            {
+                "description": "Acknowledge the revised document schedule.",
+                "reason": "The status update changes several planned dates.",
+                "required": False,
+                "uncertain": False,
+            }
+        ]
+        items = normalize_reply_items(
+            parse_incoming_email_analysis(json.dumps(data))
+        )
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].item_type, "recommendation")
+        self.assertFalse(items[0].required)
+
+    def test_pure_notification_has_no_invented_reply_item(self) -> None:
+        data = json.loads(json.dumps(VALID_ANALYSIS))
+        data["sender_requests"] = []
+        data["questions_requiring_reply"] = []
+        data["recommended_reply_items"] = []
+        data["summary"] = "The office will be closed on Friday."
+        items = normalize_reply_items(
+            parse_incoming_email_analysis(json.dumps(data))
+        )
+        self.assertEqual(items, ())
+
+    def test_exact_duplicate_recommendation_is_not_added_twice(self) -> None:
+        data = json.loads(json.dumps(VALID_ANALYSIS))
+        data["recommended_reply_items"] = [
+            {
+                "description": "  Explain   the delay. ",
+                "reason": "Recommended coverage.",
+                "required": True,
+                "uncertain": False,
+            }
+        ]
+        items = normalize_reply_items(
+            parse_incoming_email_analysis(json.dumps(data))
+        )
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].item_type, "request")
+
 
 class ReplyDecisionValidationTests(unittest.TestCase):
     def setUp(self) -> None:

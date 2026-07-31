@@ -55,6 +55,7 @@ VALID_ANALYSIS = {
     ],
     "urgency": "high",
     "reply_strategy": ["Separate confirmed facts from pending checks."],
+    "recommended_reply_items": [],
     "detected_subject": "Updated Delivery Schedule Required",
     "uncertainties": [],
 }
@@ -237,6 +238,34 @@ class IncomingEmailModelTests(unittest.TestCase):
         self.assertIn("17th July", result.key_dates[0].value)
         self.assertIn("24th July", result.key_dates[0].value)
         self.assertTrue(result.uncertainties)
+
+    def test_recommended_reply_items_are_structured_and_get_stable_ids(
+        self,
+    ) -> None:
+        data = json.loads(json.dumps(VALID_ANALYSIS))
+        data["sender_requests"] = []
+        data["questions_requiring_reply"] = []
+        data["recommended_reply_items"] = [
+            {
+                "description": "Confirm receipt of the schedule update.",
+                "reason": "The sender provided revised document dates.",
+                "required": "true",
+                "uncertain": False,
+            },
+            {
+                "description": "Confirm whether the PIM impact will be assessed.",
+                "reason": "Several date changes may affect the PIM.",
+                "required": False,
+                "uncertain": True,
+            },
+        ]
+        result = parse_incoming_email_analysis(json.dumps(data))
+        self.assertEqual(
+            [item.item_id for item in result.recommended_reply_items],
+            ["recommendation_1", "recommendation_2"],
+        )
+        self.assertTrue(result.recommended_reply_items[0].required)
+        self.assertTrue(result.recommended_reply_items[1].uncertain)
 
     def test_missing_dates_are_empty_instead_of_invented(self) -> None:
         data = json.loads(json.dumps(VALID_ANALYSIS))

@@ -129,6 +129,75 @@ class StreamlitAppTests(unittest.TestCase):
                 "",
             )
 
+    def test_zero_reply_items_offer_explicit_acknowledgement_path(
+        self,
+    ) -> None:
+        data = json.loads(json.dumps(VALID_ANALYSIS))
+        data["sender_requests"] = []
+        data["questions_requiring_reply"] = []
+        data["recommended_reply_items"] = []
+        analysis = parse_incoming_email_analysis(json.dumps(data))
+        app = self.create_home()
+        app.button(key="home__action__reply").click().run(timeout=10)
+        with patch(
+            "ai_service.DeepSeekEmailService.analyze_incoming_email",
+            return_value=analysis,
+        ):
+            app.text_area(key="reply__original_email").set_value(
+                "For your information, the project status has been updated."
+            ).run(timeout=10)
+            app.button(key="reply__analyze").click().run(timeout=10)
+
+        warnings = "\n".join(item.value for item in app.warning)
+        self.assertIn("未检测到明确需要回复的问题", warnings)
+        self.assertNotIn(
+            "reply__start_decisions",
+            [button.key for button in app.button],
+        )
+        self.assertEqual(app.session_state["reply__step"], 2)
+
+        app.radio(key="reply__zero_item_choice").set_value(
+            "是，生成确认收到的回复"
+        ).run(timeout=10)
+        app.button(key="reply__continue_with_acknowledgement").click().run(
+            timeout=10
+        )
+        items = tuple(app.session_state["reply__normalized_items"])
+        self.assertEqual(app.session_state["reply__step"], 3)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0].item_type, "acknowledgement")
+        self.assertEqual(items[0].item_id, "acknowledgement_1")
+
+    def test_zero_item_return_preserves_original_email(self) -> None:
+        data = json.loads(json.dumps(VALID_ANALYSIS))
+        data["sender_requests"] = []
+        data["questions_requiring_reply"] = []
+        data["recommended_reply_items"] = []
+        analysis = parse_incoming_email_analysis(json.dumps(data))
+        original = "This is a status notification only."
+        app = self.create_home()
+        app.button(key="home__action__reply").click().run(timeout=10)
+        with patch(
+            "ai_service.DeepSeekEmailService.analyze_incoming_email",
+            return_value=analysis,
+        ):
+            app.text_area(key="reply__original_email").set_value(
+                original
+            ).run(timeout=10)
+            app.button(key="reply__analyze").click().run(timeout=10)
+
+        app.radio(key="reply__zero_item_choice").set_value(
+            "返回修改邮件"
+        ).run(timeout=10)
+        app.button(key="reply__return_to_modify_from_zero").click().run(
+            timeout=10
+        )
+        self.assertEqual(app.session_state["reply__step"], 1)
+        self.assertEqual(
+            app.text_area(key="reply__original_email").value,
+            original,
+        )
+
     def test_reply_high_risk_confirmation_is_bound_to_current_email(self) -> None:
         app = self.create_home()
         app.button(key="home__action__reply").click().run(timeout=10)
