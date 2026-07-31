@@ -14,11 +14,7 @@ from access_control import (
 from ai_service import AIServiceError, DeepSeekEmailService, SenderDetails
 from communication_analysis_service import CommunicationAnalysis
 from config import (
-    APP_VERSION_LABEL,
-    APP_VERSION,
     MAX_INPUT_CHARS,
-    PRODUCT_NAME_EN,
-    PRODUCT_NAME_ZH,
     load_settings,
 )
 from content_risk_service import (
@@ -31,6 +27,12 @@ from localization_service import (
     COUNTRY_REGION_OPTIONS,
     LocalizationGuidance,
     build_localization_guidance,
+)
+from product_identity import (
+    APP_VERSION,
+    APP_VERSION_LABEL,
+    PRODUCT_NAME_EN,
+    PRODUCT_NAME_ZH,
 )
 from services.scenario_service import ScenarioService
 from services.incoming_email_analysis import IncomingEmailAnalysisService

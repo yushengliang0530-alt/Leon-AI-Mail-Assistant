@@ -4,21 +4,22 @@ from dataclasses import dataclass
 import os
 from typing import Mapping, Any
 
+from product_identity import (
+    APP_BRAND,
+    APP_NAME_EN,
+    APP_NAME_ZH,
+    APP_VERSION,
+    APP_VERSION_LABEL,
+    PRODUCT_NAME_EN,
+    PRODUCT_NAME_ZH,
+)
+
 
 DEFAULT_MODEL = "deepseek-v4-flash"
 DEFAULT_BASE_URL = "https://api.deepseek.com"
 DEFAULT_TIMEOUT_SECONDS = 45.0
 DEFAULT_MAX_TOKENS = 1600
 MAX_INPUT_CHARS = 8000
-APP_BRAND = "Leon AI"
-APP_NAME_ZH = "AI商务邮件工作台"
-APP_NAME_EN = "AI Business Email Workspace"
-APP_VERSION = "2.0"
-APP_VERSION_LABEL = "V2.0"
-
-# Compatibility aliases used by the original generate and improve workspace.
-PRODUCT_NAME_ZH = APP_NAME_ZH
-PRODUCT_NAME_EN = APP_NAME_EN
 
 
 @dataclass(frozen=True)

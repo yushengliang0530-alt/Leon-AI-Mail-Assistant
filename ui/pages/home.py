@@ -5,7 +5,12 @@ from dataclasses import dataclass
 
 import streamlit as st
 
-from config import APP_BRAND, APP_NAME_EN, APP_NAME_ZH, APP_VERSION_LABEL
+from product_identity import (
+    APP_BRAND,
+    APP_NAME_EN,
+    APP_NAME_ZH,
+    APP_VERSION_LABEL,
+)
 from ui.state import (
     get_selected_home_action,
     open_legacy_improve,
