@@ -45,13 +45,12 @@ class StreamlitAppTests(unittest.TestCase):
         app = self.create_home()
         rendered = "\n".join(item.value for item in app.markdown)
         self.assertIn("Leon AI", rendered)
-        self.assertIn(APP_NAME_ZH, rendered)
-        self.assertIn(APP_NAME_EN, rendered)
-        self.assertIn("V2.0", rendered)
-        self.assertNotIn("DEVELOPMENT", rendered)
+        self.assertIn("Leon AI Copilot", rendered)
+        self.assertIn("Business Communication Copilot", rendered)
+        self.assertIn("V2.1 Development", rendered)
         self.assertNotIn("开发中", rendered)
         self.assertNotIn("Phase", rendered)
-        self.assertIn("今天有什么商务沟通需要完成", rendered)
+        self.assertIn("今天需要完成什么商务沟通？", rendered)
         for action in (
             "reply",
             "supplier",
@@ -547,7 +546,6 @@ class StreamlitAppTests(unittest.TestCase):
     def create_supplier_workflow(self) -> AppTest:
         app = self.create_home()
         app.button(key="home__action__supplier").click().run(timeout=10)
-        app.button(key="home__open_supplier_workflow").click().run(timeout=10)
         self.assertFalse(list(app.exception))
         return app
 
@@ -765,19 +763,19 @@ class StreamlitAppTests(unittest.TestCase):
     def test_legacy_improve_is_reachable_and_can_return_home(self) -> None:
         app = self.create_home()
         app.button(key="home__action__improve").click().run(timeout=10)
-        app.button(key="home__open_legacy_improve").click().run(timeout=10)
         self.assertIsNotNone(app.text_area(key="improve_original_email"))
         self.assertEqual(app.session_state["writing_mode"], "优化英文邮件")
         app.button(key="legacy__return_home").click().run(timeout=10)
         self.assertIsNotNone(app.button(key="home__action__reply"))
 
     def test_home_has_mobile_single_column_css(self) -> None:
-        source = (
-            APP_PATH.parent / "ui" / "pages" / "home.py"
-        ).read_text(encoding="utf-8")
-        self.assertIn("@media (max-width:640px)", source)
+        source = (APP_PATH.parent / "ui" / "styles.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("@media (max-width: 640px)", source)
         self.assertIn("flex-direction:column", source)
-        self.assertIn("overflow-x:hidden", source)
+        self.assertIn("overflow-x:clip", source)
+        self.assertIn('[data-testid="stMainBlockContainer"]', source)
 
     def test_required_field_messages_are_in_chinese(self) -> None:
         app = self.create_app()
@@ -796,7 +794,7 @@ class StreamlitAppTests(unittest.TestCase):
         rendered = "\n".join(item.value for item in app.markdown)
         self.assertIn(APP_NAME_ZH, rendered)
         self.assertIn(APP_NAME_EN, rendered)
-        self.assertEqual(APP_VERSION, "2.0")
+        self.assertEqual(APP_VERSION, "2.1")
         self.assertIn(
             "未指定 / Not Specified",
             app.selectbox(key="generate_country_region").options,

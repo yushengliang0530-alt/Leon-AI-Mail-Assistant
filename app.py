@@ -42,6 +42,7 @@ from ui.pages.compose_supplier import render_supplier_workflow
 from ui.pages.home import render_home
 from ui.pages.reply import render_reply_workspace
 from ui.state import get_home_view, initialize_home_state, return_to_home
+from ui.styles import inject_global_styles
 
 st.set_page_config(
     page_title=f"Leon AI · {PRODUCT_NAME_ZH} · {APP_VERSION_LABEL}",
@@ -50,25 +51,24 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+inject_global_styles()
 
 st.markdown(
     """
     <style>
     :root {
-        --ink: #10213b;
-        --muted: #66758a;
-        --line: #dce3ec;
-        --paper: #ffffff;
-        --canvas: #f4f7fb;
-        --blue: #2457d6;
-        --blue-dark: #1945b5;
-        --blue-soft: #edf3ff;
+        --ink: var(--la-ink);
+        --muted: var(--la-muted);
+        --line: var(--la-border);
+        --paper: var(--la-surface);
+        --canvas: var(--la-canvas);
+        --blue: var(--la-primary);
+        --blue-dark: var(--la-primary-strong);
+        --blue-soft: var(--la-info-bg);
     }
 
     .stApp {
-        background:
-            radial-gradient(circle at 92% 5%, rgba(36, 87, 214, 0.08), transparent 24rem),
-            var(--canvas);
+        background:var(--canvas);
         color: var(--ink);
     }
 

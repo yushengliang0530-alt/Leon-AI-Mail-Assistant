@@ -18,8 +18,8 @@ class ProductIdentityTests(unittest.TestCase):
         self.assertEqual(APP_BRAND, "Leon AI")
         self.assertEqual(APP_NAME_ZH, "AI商务邮件工作台")
         self.assertEqual(APP_NAME_EN, "AI Business Email Workspace")
-        self.assertEqual(APP_VERSION, "2.0")
-        self.assertEqual(APP_VERSION_LABEL, "V2.0")
+        self.assertEqual(APP_VERSION, "2.1")
+        self.assertEqual(APP_VERSION_LABEL, "V2.1 Development")
         self.assertEqual(PRODUCT_NAME_ZH, APP_NAME_ZH)
         self.assertEqual(PRODUCT_NAME_EN, APP_NAME_EN)
 
