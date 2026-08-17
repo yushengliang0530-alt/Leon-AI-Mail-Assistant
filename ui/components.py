@@ -22,6 +22,16 @@ class TaskCard:
     primary: bool = False
 
 
+@dataclass(frozen=True)
+class WorkflowStep:
+    """Display-only description of one workspace step."""
+
+    key: str
+    label: str
+    helper: str
+    state: str = "upcoming"
+
+
 def render_global_header(
     *,
     version: str,
@@ -70,6 +80,100 @@ def render_page_header(
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_workspace_header(
+    *,
+    title: str,
+    description: str,
+    eyebrow: str,
+    step_label: str = "",
+) -> None:
+    """Render the neutral task header shared by future workspace migrations."""
+    step_html = (
+        f'<span class="la-workspace-header__step">{html.escape(step_label)}</span>'
+        if step_label
+        else ""
+    )
+    st.markdown(
+        f"""
+        <section class="la-workspace-header">
+          <div>
+            <div class="la-workspace-header__eyebrow">{html.escape(eyebrow)}</div>
+            <h1>{html.escape(title)}</h1>
+            <p>{html.escape(description)}</p>
+          </div>
+          {step_html}
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_workflow_nav(steps: tuple[WorkflowStep, ...]) -> None:
+    """Render the display-only workflow rail without changing task state."""
+    items = "".join(
+        f"""
+        <li class="la-workflow-nav__item la-workflow-nav__item--{html.escape(step.state)}">
+          <span class="la-workflow-nav__marker" aria-hidden="true"></span>
+          <span>
+            <strong>{html.escape(step.label)}</strong>
+            <small>{html.escape(step.helper)}</small>
+          </span>
+        </li>
+        """
+        for step in steps
+    )
+    st.markdown(
+        f'<nav class="la-workflow-nav" aria-label="任务流程"><ol>{items}</ol></nav>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_workspace_shell(
+    *,
+    workspace_key: str,
+    version: str,
+    service_status: str,
+    title: str,
+    description: str,
+    eyebrow: str,
+    steps: tuple[WorkflowStep, ...],
+    render_task: Callable[[], None],
+    on_return_home: Callable[[], None],
+) -> None:
+    """Render a complete presentation shell around one supplied task canvas."""
+    with st.container(key=f"workspace__{workspace_key}"):
+        render_global_header(
+            version=version,
+            service_status=service_status,
+            show_guide=False,
+        )
+        st.button(
+            "← 返回工作台",
+            key=f"workspace__{workspace_key}__return_home",
+            type="secondary",
+            on_click=on_return_home,
+        )
+        render_workspace_header(
+            title=title,
+            description=description,
+            eyebrow=eyebrow,
+            step_label=_current_step_label(steps),
+        )
+        navigation, canvas = st.columns((0.28, 0.72), gap="large")
+        with navigation:
+            render_workflow_nav(steps)
+        with canvas:
+            with st.container(key=f"workspace__{workspace_key}__task_area"):
+                render_task()
+
+
+def _current_step_label(steps: tuple[WorkflowStep, ...]) -> str:
+    for index, step in enumerate(steps, start=1):
+        if step.state == "current":
+            return f"步骤 {index} / {len(steps)} · {step.label}"
+    return f"{len(steps)} 个步骤"
 
 
 def render_section_header(title: str, subtitle: str = "") -> None:
@@ -162,6 +266,52 @@ def render_loading_state(title: str, helper: str) -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_workspace_empty_state(title: str, helper: str) -> None:
+    """Present an intentionally empty task canvas inside the workspace shell."""
+    st.markdown(
+        f"""
+        <section class="la-workspace-empty-state">
+          <strong>{html.escape(title)}</strong>
+          <span>{html.escape(helper)}</span>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_action_bar(
+    *,
+    primary_label: str,
+    primary_key: str,
+    on_primary: Callable[[], None] | None = None,
+    secondary_label: str = "",
+    secondary_key: str = "",
+    on_secondary: Callable[[], None] | None = None,
+) -> None:
+    """Render one clear primary action with an optional secondary action."""
+    with st.container(key=f"action_bar__{primary_key}"):
+        if secondary_label:
+            columns = st.columns(2, gap="small")
+            with columns[0]:
+                secondary_action_button(
+                    secondary_label,
+                    key=secondary_key,
+                    on_click=on_secondary,
+                )
+            with columns[1]:
+                primary_action_button(
+                    primary_label,
+                    key=primary_key,
+                    on_click=on_primary,
+                )
+        else:
+            primary_action_button(
+                primary_label,
+                key=primary_key,
+                on_click=on_primary,
+            )
 
 
 def primary_action_button(

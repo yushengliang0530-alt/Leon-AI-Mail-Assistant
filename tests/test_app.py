@@ -53,10 +53,107 @@ class StreamlitAppTests(unittest.TestCase):
         self.assertIn("今天需要完成什么商务沟通？", rendered)
         for action in (
             "reply",
-            "supplier",
+            "create",
             "improve",
         ):
             self.assertIsNotNone(app.button(key=f"home__action__{action}"))
+        self.assertIsNotNone(app.button(key="home__explore_more"))
+
+    def test_create_workspace_is_presentation_only_and_opens_existing_editor(
+        self,
+    ) -> None:
+        app = self.create_home()
+        with patch(
+            "ai_service.DeepSeekEmailService.generate_email",
+        ) as generate_mock:
+            app.button(key="home__action__create").click().run(timeout=10)
+
+            self.assertFalse(list(app.exception))
+            self.assertEqual(
+                app.session_state["system__active_page"],
+                "create_workspace",
+            )
+            self.assertIn(
+                "从必要事实开始创建邮件",
+                "\n".join(item.value for item in app.markdown),
+            )
+            self.assertIsNotNone(
+                app.button(key="create_workspace__open_editor")
+            )
+            self.assertEqual(generate_mock.call_count, 0)
+
+            app.button(key="create_workspace__open_editor").click().run(
+                timeout=10
+            )
+            self.assertFalse(list(app.exception))
+            self.assertEqual(
+                app.session_state["writing_mode"],
+                "写英文邮件",
+            )
+            self.assertIsNotNone(app.button(key="legacy__generate_submit"))
+            self.assertEqual(generate_mock.call_count, 0)
+
+    def test_improve_workspace_is_presentation_only_and_opens_existing_editor(
+        self,
+    ) -> None:
+        app = self.create_home()
+        with patch(
+            "ai_service.DeepSeekEmailService.improve_email",
+        ) as improve_mock:
+            app.button(key="home__action__improve").click().run(timeout=10)
+
+            self.assertFalse(list(app.exception))
+            self.assertEqual(
+                app.session_state["system__active_page"],
+                "improve_workspace",
+            )
+            self.assertIn(
+                "让已有草稿更清晰、更适合商务沟通",
+                "\n".join(item.value for item in app.markdown),
+            )
+            self.assertEqual(improve_mock.call_count, 0)
+
+            app.button(key="improve_workspace__open_editor").click().run(
+                timeout=10
+            )
+            self.assertFalse(list(app.exception))
+            self.assertEqual(
+                app.session_state["writing_mode"],
+                "优化英文邮件",
+            )
+            self.assertIsNotNone(app.button(key="legacy__improve_submit"))
+            self.assertEqual(improve_mock.call_count, 0)
+
+    def test_explore_more_returns_home_and_routes_supplier_without_ai(self) -> None:
+        app = self.create_home()
+        with patch(
+            "ai_service.DeepSeekEmailService.generate_scenario_email",
+        ) as generate_mock:
+            app.button(key="home__explore_more").click().run(timeout=10)
+            self.assertFalse(list(app.exception))
+            self.assertEqual(
+                app.session_state["system__active_page"], "explore_more"
+            )
+            self.assertIn(
+                "探索更多工作流",
+                "\n".join(item.value for item in app.markdown),
+            )
+            self.assertIsNotNone(app.button(key="explore__open__supplier"))
+            self.assertEqual(generate_mock.call_count, 0)
+
+            app.button(key="explore__open__supplier").click().run(timeout=10)
+            self.assertFalse(list(app.exception))
+            self.assertEqual(
+                app.session_state["system__active_page"],
+                "supplier_workspace",
+            )
+            self.assertIsNotNone(
+                app.button(key="compose__task__supplier_quotation")
+            )
+            self.assertEqual(generate_mock.call_count, 0)
+
+            app.button(key="compose__return_home").click().run(timeout=10)
+            self.assertIsNotNone(app.button(key="home__action__reply"))
 
     def test_reply_home_entry_opens_real_analysis_workspace(self) -> None:
         app = self.create_home()
@@ -545,7 +642,8 @@ class StreamlitAppTests(unittest.TestCase):
 
     def create_supplier_workflow(self) -> AppTest:
         app = self.create_home()
-        app.button(key="home__action__supplier").click().run(timeout=10)
+        app.button(key="home__explore_more").click().run(timeout=10)
+        app.button(key="explore__open__supplier").click().run(timeout=10)
         self.assertFalse(list(app.exception))
         return app
 
@@ -763,6 +861,7 @@ class StreamlitAppTests(unittest.TestCase):
     def test_legacy_improve_is_reachable_and_can_return_home(self) -> None:
         app = self.create_home()
         app.button(key="home__action__improve").click().run(timeout=10)
+        app.button(key="improve_workspace__open_editor").click().run(timeout=10)
         self.assertIsNotNone(app.text_area(key="improve_original_email"))
         self.assertEqual(app.session_state["writing_mode"], "优化英文邮件")
         app.button(key="legacy__return_home").click().run(timeout=10)

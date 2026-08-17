@@ -4,17 +4,23 @@ import unittest
 from unittest.mock import Mock, patch
 
 from ui import components, styles
-from ui.pages import home
+from ui.pages import explore, home, workspace_foundation
 
 
-EXPECTED_ACTIONS = {"reply", "supplier", "improve"}
+EXPECTED_ACTIONS = {"reply", "create", "improve"}
 
 
 class HomeTaskCardTests(unittest.TestCase):
-    def test_all_home_entries_have_unique_keys_and_icons(self) -> None:
+    def test_home_has_exactly_three_core_task_entries(self) -> None:
         cards = tuple(home.HOME_TASK_CARDS.values())
         self.assertEqual({card.action for card in cards}, EXPECTED_ACTIONS)
-        self.assertEqual(len(cards), len(EXPECTED_ACTIONS))
+        self.assertEqual(len(cards), 3)
+        self.assertNotIn("supplier", home.HOME_TASK_CARDS)
+        self.assertTrue(home.HOME_TASK_CARDS["reply"].primary)
+        self.assertEqual(home.WORKSPACE_ACTIONS, ("create", "improve"))
+
+    def test_all_home_entries_have_unique_keys_icons_and_action_labels(self) -> None:
+        cards = tuple(home.HOME_TASK_CARDS.values())
         keys = tuple(f"home__action__{card.action}" for card in cards)
         self.assertEqual(len(keys), len(set(keys)))
         for card in cards:
@@ -23,64 +29,67 @@ class HomeTaskCardTests(unittest.TestCase):
             self.assertTrue(card.action_label)
             self.assertRegex(card.icon, r"^[a-z][a-z0-9_]*$")
 
-    def test_production_workspace_cards_share_one_configuration_shape(
-        self,
-    ) -> None:
-        self.assertEqual(home.WORKSPACE_ACTIONS, ("supplier", "improve"))
-        for card in home.HOME_TASK_CARDS.values():
-            self.assertIsInstance(card, components.TaskCard)
-        self.assertTrue(home.HOME_TASK_CARDS["reply"].primary)
-        self.assertFalse(home.HOME_TASK_CARDS["supplier"].primary)
-        self.assertFalse(home.HOME_TASK_CARDS["improve"].primary)
-
-    def test_render_task_card_passes_material_icon_stable_key_and_callback(
-        self,
-    ) -> None:
+    def test_task_cards_use_shared_renderer_with_stable_callbacks(self) -> None:
         callback = Mock()
-        card = home.HOME_TASK_CARDS["supplier"]
+        card = home.HOME_TASK_CARDS["create"]
         with patch.object(components.st, "button") as button:
             components.render_task_card(card=card, on_click=callback)
-        button.assert_called_once()
         kwargs = button.call_args.kwargs
-        self.assertEqual(kwargs["key"], "home__action__supplier")
-        self.assertEqual(kwargs["icon"], ":material/local_shipping:")
+        self.assertEqual(kwargs["key"], "home__action__create")
+        self.assertEqual(kwargs["icon"], ":material/edit_note:")
         self.assertTrue(kwargs["use_container_width"])
         self.assertIs(kwargs["on_click"], callback)
 
-    def test_reply_card_preserves_primary_click_callback(self) -> None:
+    def test_primary_reply_card_uses_primary_style(self) -> None:
         callback = Mock()
-        card = home.HOME_TASK_CARDS["reply"]
         with patch.object(components.st, "button") as button:
-            components.render_task_card(card=card, on_click=callback)
-        kwargs = button.call_args.kwargs
-        self.assertEqual(kwargs["type"], "primary")
-        self.assertIs(kwargs["on_click"], callback)
+            components.render_task_card(
+                card=home.HOME_TASK_CARDS["reply"],
+                on_click=callback,
+            )
+        self.assertEqual(button.call_args.kwargs["type"], "primary")
 
-    def test_home_cards_use_only_the_shared_renderer(self) -> None:
+    def test_home_routes_core_tasks_and_explore_without_expanding_content(self) -> None:
         source = inspect.getsource(home.render_home)
-        self.assertNotIn("st.button(", source)
         self.assertIn("render_task_card(", source)
-        self.assertIn("render_global_header(", source)
-        self.assertNotIn("set_selected_home_action", source)
+        self.assertIn("open_reply_workspace", source)
+        self.assertIn("open_create_workspace", source)
+        self.assertIn("open_improve_workspace", source)
+        self.assertIn("open_explore_more", source)
+        self.assertIn('key="home__explore_more"', source)
+        self.assertNotIn("open_supplier_workflow", source)
         self.assertNotIn("_render_selected_action", inspect.getsource(home))
 
-    def test_home_has_direct_routes_for_all_available_workflows(self) -> None:
-        source = inspect.getsource(home.render_home)
-        self.assertIn("open_reply_workspace", source)
-        self.assertIn("open_supplier_workflow", source)
-        self.assertIn("open_legacy_improve", source)
-        self.assertNotIn("home__open_supplier_workflow", source)
-        self.assertNotIn("home__open_legacy_improve", source)
-
-    def test_home_uses_approved_brand_and_information_hierarchy(self) -> None:
+    def test_home_uses_copilot_information_hierarchy(self) -> None:
         source = inspect.getsource(home.render_home)
         self.assertIn("今天需要完成什么商务沟通？", source)
         self.assertIn("选择任务，Leon AI会一步步帮助你完成。", source)
-        self.assertIn("主要工作流", source)
-        self.assertIn("PRIMARY WORKFLOW", source)
-        self.assertIn("常用任务", source)
-        self.assertIn("EVERYDAY TASKS", source)
-        self.assertIn("安全提醒", source)
+        self.assertIn("核心任务", source)
+        self.assertIn("CORE TASKS", source)
+        self.assertIn("继续处理", source)
+        self.assertIn("探索更多工作流 · Explore More", source)
+
+    def test_explore_catalog_only_exposes_supplier_as_available(self) -> None:
+        items = {item["key"]: item for item in explore.CATALOG_ITEMS}
+        self.assertEqual(set(items), {"supplier", "meeting", "report", "approval"})
+        self.assertTrue(items["supplier"]["available"])
+        self.assertTrue(
+            all(not item["available"] for key, item in items.items() if key != "supplier")
+        )
+
+    def test_workspace_foundation_uses_single_shell_and_empty_state(self) -> None:
+        source = inspect.getsource(workspace_foundation.render_create_workspace)
+        improve_source = inspect.getsource(
+            workspace_foundation.render_improve_workspace
+        )
+        self.assertIn("render_workspace_shell", source)
+        self.assertIn("render_workspace_empty_state", source)
+        self.assertIn("render_action_bar", source)
+        self.assertIn("render_workspace_shell", improve_source)
+        self.assertIn("render_workspace_empty_state", improve_source)
+        self.assertIn("render_action_bar", improve_source)
+        self.assertEqual(len(workspace_foundation.CREATE_WORKFLOW_STEPS), 3)
+        self.assertEqual(len(workspace_foundation.IMPROVE_WORKFLOW_STEPS), 3)
 
     def test_design_tokens_cover_required_status_and_spacing_values(self) -> None:
         source = inspect.getsource(styles)
@@ -101,38 +110,25 @@ class HomeTaskCardTests(unittest.TestCase):
         for spacing in (".25rem", ".5rem", ".75rem", "1rem", "1.5rem", "2rem", "3rem", "4rem"):
             self.assertIn(spacing, source)
 
-    def test_home_cards_use_shared_layout_with_primary_variant(self) -> None:
-        source = inspect.getsource(styles.inject_workspace_home_styles)
-        compact = re.sub(r"\s+", " ", source)
-        self.assertIn('[class*="st-key-home__action__"]', source)
-        self.assertIn("grid-template-columns:3.25rem minmax(0,1fr) 2.5rem", compact)
-        self.assertIn('content:"→"', compact)
-        self.assertIn(".st-key-home__action__reply", source)
-        self.assertNotIn("!important", source)
-
-    def test_mobile_styles_make_cards_single_column_without_horizontal_scroll(
-        self,
-    ) -> None:
+    def test_workspace_css_uses_shared_shell_and_mobile_stack(self) -> None:
         source = inspect.getsource(styles)
         compact = re.sub(r"\s+", " ", source)
-        self.assertIn("@media (max-width: 640px)", source)
+        self.assertIn(".la-workspace-header", source)
+        self.assertIn(".la-workflow-nav", source)
+        self.assertIn(".la-action-bar", source)
+        self.assertIn(".la-workspace-empty-state", source)
+        self.assertIn('@media (max-width: 768px)', source)
         self.assertIn("flex-direction:column", compact)
         self.assertIn("overflow-x:clip", compact)
-        self.assertIn("min-height:6.5rem", compact)
 
-    def test_common_presentation_components_are_available(self) -> None:
+    def test_common_workspace_components_are_available(self) -> None:
         for name in (
             "render_global_header",
-            "render_page_header",
-            "render_task_card",
-            "render_section_header",
-            "render_status_badge",
-            "render_summary_card",
-            "render_notice_bar",
-            "render_empty_state",
-            "render_loading_state",
-            "primary_action_button",
-            "secondary_action_button",
+            "render_workspace_header",
+            "render_workspace_shell",
+            "render_workflow_nav",
+            "render_action_bar",
+            "render_workspace_empty_state",
         ):
             self.assertTrue(callable(getattr(components, name)))
 

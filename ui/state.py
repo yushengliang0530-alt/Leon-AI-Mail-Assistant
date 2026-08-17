@@ -7,10 +7,15 @@ __all__ = [
     "advance_compose_question",
     "back_compose_question",
     "edit_compose_answer",
+    "get_active_page",
     "get_home_view",
     "get_selected_home_action",
     "initialize_home_state",
     "invalidate_preflight",
+    "open_create_workspace",
+    "open_explore_more",
+    "open_improve_workspace",
+    "open_legacy_create_editor",
     "open_legacy_improve",
     "open_reply_workspace",
     "open_supplier_workflow",
@@ -35,8 +40,34 @@ __all__ = [
 
 HOME_VIEW_KEY = "system__home_view"
 HOME_ACTION_KEY = "system__selected_home_action"
+ACTIVE_PAGE_KEY = "system__active_page"
+WORKSPACE_KEY = "system__workspace"
+NAVIGATION_HISTORY_KEY = "system__navigation_history"
 SUPPLIER_VIEW = "compose_supplier"
 REPLY_VIEW = "reply_analysis"
+CREATE_VIEW = "create_workspace"
+EXPLORE_VIEW = "explore_more"
+LEGACY_CREATE_VIEW = "legacy_create"
+LEGACY_IMPROVE_VIEW = "legacy_improve"
+
+HOME_PAGE = "home"
+REPLY_PAGE = "reply_workspace"
+SUPPLIER_PAGE = "supplier_workspace"
+IMPROVE_PAGE = "improve_workspace"
+CREATE_PAGE = "create_workspace"
+EXPLORE_PAGE = "explore_more"
+CREATE_EDITOR_PAGE = "legacy_create_editor"
+IMPROVE_EDITOR_PAGE = "legacy_improve_editor"
+
+_LEGACY_VIEW_TO_PAGE = {
+    "home": HOME_PAGE,
+    REPLY_VIEW: REPLY_PAGE,
+    SUPPLIER_VIEW: SUPPLIER_PAGE,
+    LEGACY_IMPROVE_VIEW: IMPROVE_EDITOR_PAGE,
+    CREATE_VIEW: CREATE_PAGE,
+    EXPLORE_VIEW: EXPLORE_PAGE,
+    LEGACY_CREATE_VIEW: CREATE_EDITOR_PAGE,
+}
 
 COMPOSE_DEFAULTS = {
     "compose__scenario_family": "follow_up_supplier",
@@ -122,6 +153,12 @@ def initialize_home_state() -> None:
         st.session_state[HOME_VIEW_KEY] = "home"
     if HOME_ACTION_KEY not in st.session_state:
         st.session_state[HOME_ACTION_KEY] = None
+    if ACTIVE_PAGE_KEY not in st.session_state:
+        st.session_state[ACTIVE_PAGE_KEY] = HOME_PAGE
+    if WORKSPACE_KEY not in st.session_state:
+        st.session_state[WORKSPACE_KEY] = ""
+    if NAVIGATION_HISTORY_KEY not in st.session_state:
+        st.session_state[NAVIGATION_HISTORY_KEY] = ()
     for key, value in COMPOSE_DEFAULTS.items():
         if key not in st.session_state:
             st.session_state[key] = (
@@ -147,17 +184,47 @@ def get_selected_home_action() -> str | None:
 
 
 def open_legacy_improve() -> None:
-    st.session_state[HOME_VIEW_KEY] = "legacy_improve"
+    _navigate_to(IMPROVE_EDITOR_PAGE, "improve", LEGACY_IMPROVE_VIEW)
     st.session_state["writing_mode"] = "优化英文邮件"
 
 
 def open_supplier_workflow() -> None:
-    st.session_state[HOME_VIEW_KEY] = SUPPLIER_VIEW
-    st.session_state[HOME_ACTION_KEY] = None
+    _navigate_to(SUPPLIER_PAGE, "supplier", SUPPLIER_VIEW)
 
 
 def open_reply_workspace() -> None:
-    st.session_state[HOME_VIEW_KEY] = REPLY_VIEW
+    _navigate_to(REPLY_PAGE, "reply", REPLY_VIEW)
+
+
+def open_create_workspace() -> None:
+    """Open the presentation-only Create Email workspace shell."""
+    _navigate_to(CREATE_PAGE, "create", CREATE_VIEW)
+
+
+def open_explore_more() -> None:
+    """Open the task catalog without touching any business workflow state."""
+    _navigate_to(EXPLORE_PAGE, "explore", EXPLORE_VIEW)
+
+
+def open_improve_workspace() -> None:
+    """Open the presentation shell that preserves the current optimize editor."""
+    _navigate_to(IMPROVE_PAGE, "improve", "improve_workspace")
+
+
+def open_legacy_create_editor() -> None:
+    """Open the existing V1 create-email UI without changing its behavior."""
+    _navigate_to(CREATE_EDITOR_PAGE, "create", LEGACY_CREATE_VIEW)
+    st.session_state["writing_mode"] = "写英文邮件"
+
+
+def _navigate_to(page: str, workspace: str, legacy_view: str) -> None:
+    current = str(st.session_state.get(ACTIVE_PAGE_KEY, HOME_PAGE))
+    history = tuple(st.session_state.get(NAVIGATION_HISTORY_KEY, ()))
+    if current != page:
+        st.session_state[NAVIGATION_HISTORY_KEY] = history + (current,)
+    st.session_state[ACTIVE_PAGE_KEY] = page
+    st.session_state[WORKSPACE_KEY] = workspace
+    st.session_state[HOME_VIEW_KEY] = legacy_view
     st.session_state[HOME_ACTION_KEY] = None
 
 
@@ -410,7 +477,19 @@ def return_to_compose_review() -> None:
 def return_to_home() -> None:
     st.session_state[HOME_VIEW_KEY] = "home"
     st.session_state[HOME_ACTION_KEY] = None
+    st.session_state[ACTIVE_PAGE_KEY] = HOME_PAGE
+    st.session_state[WORKSPACE_KEY] = ""
 
 
 def get_home_view() -> str:
     return str(st.session_state.get(HOME_VIEW_KEY, "home"))
+
+
+def get_active_page() -> str:
+    """Return the presentation route while accepting legacy deep links."""
+    active_page = str(st.session_state.get(ACTIVE_PAGE_KEY, HOME_PAGE))
+    legacy_view = get_home_view()
+    expected_page = _LEGACY_VIEW_TO_PAGE.get(legacy_view, IMPROVE_PAGE)
+    if active_page == HOME_PAGE and expected_page != HOME_PAGE:
+        return expected_page
+    return active_page

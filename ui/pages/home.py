@@ -14,9 +14,10 @@ from ui.components import (
     render_task_card,
 )
 from ui.state import (
-    open_legacy_improve,
+    open_create_workspace,
+    open_explore_more,
+    open_improve_workspace,
     open_reply_workspace,
-    open_supplier_workflow,
 )
 from ui.styles import inject_workspace_home_styles
 
@@ -33,11 +34,11 @@ HOME_TASK_CARDS = {
             primary=True,
         ),
         TaskCard(
-            action="supplier",
-            title="催供应商",
-            description="通过引导式流程快速完成催交期、催计划等供应商沟通。",
-            icon="local_shipping",
-            action_label="开始跟进",
+            action="create",
+            title="创建商务邮件",
+            description="通过引导完成一封结构清晰、可人工审核的商务邮件。",
+            icon="edit_note",
+            action_label="开始创建",
         ),
         TaskCard(
             action="improve",
@@ -49,7 +50,7 @@ HOME_TASK_CARDS = {
     )
 }
 
-WORKSPACE_ACTIONS = ("supplier", "improve")
+WORKSPACE_ACTIONS = ("create", "improve")
 
 
 def render_home(
@@ -81,17 +82,17 @@ def render_home(
             unsafe_allow_html=True,
         )
 
-        render_section_header("主要工作流", "PRIMARY WORKFLOW")
+        render_section_header("核心任务", "CORE TASKS")
         render_task_card(
             card=HOME_TASK_CARDS["reply"],
             on_click=open_reply_workspace,
         )
 
-        render_section_header("常用任务", "EVERYDAY TASKS")
+        render_section_header("继续处理", "CONTINUE WITH LEON AI")
         task_columns = st.columns(2)
         callbacks = {
-            "supplier": open_supplier_workflow,
-            "improve": open_legacy_improve,
+            "create": open_create_workspace,
+            "improve": open_improve_workspace,
         }
         for column, action in zip(task_columns, WORKSPACE_ACTIONS, strict=True):
             with column:
@@ -99,6 +100,15 @@ def render_home(
                     card=HOME_TASK_CARDS[action],
                     on_click=callbacks[action],
                 )
+
+        st.button(
+            "探索更多工作流 · Explore More",
+            key="home__explore_more",
+            type="secondary",
+            icon=":material/apps:",
+            use_container_width=True,
+            on_click=open_explore_more,
+        )
 
         render_notice_bar(
             "安全提醒",

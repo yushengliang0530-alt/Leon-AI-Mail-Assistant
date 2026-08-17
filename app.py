@@ -39,15 +39,27 @@ from services.incoming_email_analysis import IncomingEmailAnalysisService
 from services.reply_generation_service import ReplyGenerationService
 from services.preflight_service import PreflightService
 from ui.pages.compose_supplier import render_supplier_workflow
+from ui.pages.explore import render_explore_more
 from ui.pages.home import render_home
 from ui.pages.reply import render_reply_workspace
-from ui.state import get_home_view, initialize_home_state, return_to_home
+from ui.pages.workspace_foundation import (
+    render_create_workspace,
+    render_improve_workspace,
+)
+from ui.state import (
+    get_active_page,
+    initialize_home_state,
+    open_legacy_create_editor,
+    open_legacy_improve,
+    open_supplier_workflow,
+    return_to_home,
+)
 from ui.styles import inject_global_styles
 
 st.set_page_config(
     page_title=f"Leon AI · {PRODUCT_NAME_ZH} · {APP_VERSION_LABEL}",
     page_icon="✦",
-    layout="centered",
+    layout="wide",
     initial_sidebar_state="collapsed",
 )
 
@@ -77,7 +89,7 @@ st.markdown(
     }
 
     [data-testid="stMainBlockContainer"] {
-        max-width: 880px;
+        max-width: 72rem;
         padding-top: 2.5rem;
         padding-bottom: 4rem;
     }
@@ -914,10 +926,10 @@ def restore_page_inputs(widget_keys: list[str]) -> None:
             st.session_state[widget_key] = st.session_state[saved_key]
 
 
-current_home_view = get_home_view()
+current_active_page = get_active_page()
+home_service_status = "已配置" if settings.is_configured else "未配置"
 
-if current_home_view == "home":
-    home_service_status = "已配置" if settings.is_configured else "未配置"
+if current_active_page == "home":
     render_home(
         ai_service_status=home_service_status,
         environment_label=environment_label,
@@ -925,13 +937,37 @@ if current_home_view == "home":
     )
     st.stop()
 
-if current_home_view == "compose_supplier":
+if current_active_page == "explore_more":
+    render_explore_more(
+        service_status=home_service_status,
+        on_return_home=return_to_home,
+        on_open_supplier=open_supplier_workflow,
+    )
+    st.stop()
+
+if current_active_page == "create_workspace":
+    render_create_workspace(
+        service_status=home_service_status,
+        on_return_home=return_to_home,
+        on_open_editor=open_legacy_create_editor,
+    )
+    st.stop()
+
+if current_active_page == "improve_workspace":
+    render_improve_workspace(
+        service_status=home_service_status,
+        on_return_home=return_to_home,
+        on_open_editor=open_legacy_improve,
+    )
+    st.stop()
+
+if current_active_page == "supplier_workspace":
     render_supplier_workflow(
         scenario_service=ScenarioService(DeepSeekEmailService(settings)),
     )
     st.stop()
 
-if current_home_view == "reply_analysis":
+if current_active_page == "reply_workspace":
     reply_backend = DeepSeekEmailService(settings)
     render_reply_workspace(
         analysis_service=IncomingEmailAnalysisService(
@@ -947,7 +983,12 @@ st.button(
     key="legacy__return_home",
     on_click=return_to_home,
 )
-st.caption("草稿优化 · 当前打开：优化已有草稿")
+legacy_workspace_label = (
+    "创建邮件 · 当前打开：创建商务邮件"
+    if st.session_state.get("writing_mode") == "写英文邮件"
+    else "草稿优化 · 当前打开：优化已有草稿"
+)
+st.caption(legacy_workspace_label)
 
 
 st.markdown(
