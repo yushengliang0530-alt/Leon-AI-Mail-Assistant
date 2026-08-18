@@ -439,12 +439,11 @@ class StreamlitAppTests(unittest.TestCase):
             )
 
             epoch = app.session_state["reply__decision_widget_epoch"]
-            app.selectbox(
+            app.button(
                 key=(
-                    f"reply__decision_widget__request_1__{epoch}__"
-                    "stance__display"
+                    f"reply__decision_option__request_1__{epoch}__accept"
                 )
-            ).select("接受并确认").run(timeout=10)
+            ).click().run(timeout=10)
             app.text_area(
                 key=(
                     f"reply__decision_widget__request_1__{epoch}__"
@@ -458,7 +457,7 @@ class StreamlitAppTests(unittest.TestCase):
             self.assertEqual(analyze_mock.call_count, 1)
             self.assertEqual(app.session_state["reply__step"], 3)
             rendered = "\n".join(item.value for item in app.markdown)
-            self.assertIn("回复决策摘要", rendered)
+            self.assertIn("回复策略确认", rendered)
             self.assertIsNotNone(
                 app.button(key="reply__generate_reply")
             )
@@ -492,12 +491,11 @@ class StreamlitAppTests(unittest.TestCase):
             app.button(key="reply__analyze").click().run(timeout=10)
             app.button(key="reply__start_decisions").click().run(timeout=10)
             epoch = app.session_state["reply__decision_widget_epoch"]
-            app.selectbox(
+            app.button(
                 key=(
-                    f"reply__decision_widget__request_1__{epoch}__"
-                    "stance__display"
+                    f"reply__decision_option__request_1__{epoch}__accept"
                 )
-            ).select("接受并确认").run(timeout=10)
+            ).click().run(timeout=10)
             app.text_area(
                 key=(
                     f"reply__decision_widget__request_1__{epoch}__"
@@ -526,6 +524,40 @@ class StreamlitAppTests(unittest.TestCase):
                 key="reply__decision_next__request_1"
             ).click().run(timeout=10)
             self.assertEqual(app.session_state["reply__step"], 3)
+            self.assertEqual(analyze_mock.call_count, 1)
+
+    def test_reply_decision_uses_single_item_selection_cards(self) -> None:
+        app = self.create_home()
+        app.button(key="home__action__reply").click().run(timeout=10)
+        analysis = parse_incoming_email_analysis(json.dumps(VALID_ANALYSIS))
+        with patch(
+            "ai_service.DeepSeekEmailService.analyze_incoming_email",
+            return_value=analysis,
+        ) as analyze_mock:
+            app.text_area(key="reply__original_email").set_value(
+                "Please explain the delay."
+            ).run(timeout=10)
+            app.button(key="reply__analyze").click().run(timeout=10)
+            app.button(key="reply__start_decisions").click().run(timeout=10)
+            epoch = app.session_state["reply__decision_widget_epoch"]
+            for stance in (
+                "accept",
+                "partial",
+                "unable_to_confirm",
+                "request_info",
+                "decline",
+                "no_response",
+                "custom",
+            ):
+                self.assertIsNotNone(
+                    app.button(
+                        key=(
+                            "reply__decision_option__request_1__"
+                            f"{epoch}__{stance}"
+                        )
+                    )
+                )
+            self.assertIn("事项 1 / 1", "\n".join(item.value for item in app.markdown))
             self.assertEqual(analyze_mock.call_count, 1)
 
     def test_phase3c_generates_then_checks_and_edit_only_rechecks(self) -> None:
@@ -589,25 +621,13 @@ class StreamlitAppTests(unittest.TestCase):
                 "Executive"
             ).run(timeout=10)
             app.button(key="reply__generate_reply").click().run(timeout=10)
-            self.assertEqual(app.session_state["reply__step"], 5)
+            self.assertEqual(app.session_state["reply__step"], 4)
             self.assertEqual(generate_mock.call_count, 1)
             self.assertEqual(coverage_mock.call_count, 1)
             self.assertEqual(preflight_mock.call_count, 0)
             self.assertIn("Sincerely,", app.session_state["reply__body"])
             rendered = "\n".join(item.value for item in app.markdown)
-            self.assertIn("本次回复覆盖 1 / 1 项", rendered)
-
-            app.button(key="preflight__run").click().run(timeout=10)
-            self.assertEqual(preflight_mock.call_count, 1)
-            self.assertEqual(
-                app.session_state["preflight__status"], "success"
-            )
-            self.assertEqual(
-                app.session_state["preflight__report"].overall_status,
-                "CHECK",
-            )
-            app.run(timeout=10)
-            self.assertEqual(preflight_mock.call_count, 1)
+            self.assertIn("1 项已覆盖", rendered)
 
             app.text_area(key="reply__body").set_value(
                 app.session_state["reply__body"] + "\nAdditional clarification."
@@ -621,6 +641,33 @@ class StreamlitAppTests(unittest.TestCase):
             app.button(key="reply__recheck_coverage").click().run(timeout=10)
             self.assertEqual(generate_mock.call_count, 1)
             self.assertEqual(coverage_mock.call_count, 2)
+
+            app.button(key="reply__continue_preflight").click().run(timeout=10)
+            self.assertEqual(app.session_state["reply__step"], 5)
+            app.button(key="preflight__run").click().run(timeout=10)
+            self.assertEqual(
+                preflight_mock.call_count,
+                1,
+                f"preflight status: {app.session_state['preflight__status']}; "
+                f"error: {app.session_state['preflight__error']}; "
+                f"exceptions: {list(app.exception)}",
+            )
+            self.assertEqual(
+                app.session_state["preflight__status"], "success"
+            )
+            self.assertEqual(
+                app.session_state["preflight__report"].overall_status,
+                "CHECK",
+            )
+            app.run(timeout=10)
+            self.assertEqual(preflight_mock.call_count, 1)
+            rendered = "\n".join(item.value for item in app.markdown)
+            self.assertIn("邮件已准备完成", rendered)
+            self.assertIn("建议确认", rendered)
+            self.assertNotIn(items[0].item_id, rendered)
+            self.assertIsNotNone(app.button(key="reply__completion_back"))
+            self.assertIsNotNone(app.button(key="reply__completion_new"))
+
 
     def test_reply_analysis_failure_keeps_original_email(self) -> None:
         app = self.create_home()

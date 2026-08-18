@@ -121,6 +121,8 @@ REPLY_DEFAULTS = {
     "reply__generated_email": None,
     "reply__subject": "",
     "reply__body": "",
+    "reply__presentation_subject": "",
+    "reply__presentation_body": "",
     "reply__coverage": None,
     "reply__summary": "",
     "reply__generation_digest": "",
@@ -313,6 +315,8 @@ def _clear_reply_generation_values() -> None:
     for key in (
         "reply__subject",
         "reply__body",
+        "reply__presentation_subject",
+        "reply__presentation_body",
         "reply__summary",
         "reply__generation_digest",
         "reply__coverage_digest",

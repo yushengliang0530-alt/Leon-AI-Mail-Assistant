@@ -1,6 +1,4 @@
-"""Guided local stance confirmation for Phase 3B."""
-
-import html
+"""Guided local stance confirmation rendered inside the Reply workspace."""
 
 import streamlit as st
 
@@ -13,6 +11,19 @@ from services.reply_item_service import (
     decision_publishable_text,
     validate_decision,
 )
+from ui.components import (
+    DecisionOption,
+    DecisionSummaryEntry,
+    render_decision_focus_card,
+    render_decision_option_cards,
+    render_decision_summary_cards,
+    render_guided_action_bar,
+    render_notice_bar,
+    render_section_header,
+    render_status_badge,
+    secondary_action_button,
+    tertiary_action_button,
+)
 from ui.state import (
     clear_reply_decisions,
     return_to_reply_analysis,
@@ -21,7 +32,15 @@ from ui.state import (
 )
 
 
-STANCE_OPTIONS = tuple(STANCE_LABELS)
+STANCE_CARD_OPTIONS = (
+    DecisionOption("accept", "可以确认", "已核实，可以明确回复"),
+    DecisionOption("partial", "部分确认", "区分可确认与待核实的部分"),
+    DecisionOption("unable_to_confirm", "暂时无法确认", "说明尚需内部核实"),
+    DecisionOption("request_info", "需要更多信息", "请对方补充必要信息"),
+    DecisionOption("decline", "无法同意", "说明原因或提出替代方案"),
+    DecisionOption("no_response", "无需回复", "明确不在本次邮件中回应"),
+    DecisionOption("custom", "自定义", "按您的处理方式说明"),
+)
 
 
 def _invalidate_generated_reply() -> None:
@@ -37,6 +56,8 @@ def _invalidate_generated_reply() -> None:
     for key in (
         "reply__subject",
         "reply__body",
+        "reply__presentation_subject",
+        "reply__presentation_body",
         "reply__summary",
         "reply__generation_digest",
         "reply__coverage_digest",
@@ -147,49 +168,27 @@ def _clear_current(item_id: str) -> None:
             del st.session_state[key]
 
 
-def _render_item_header(item: ReplyItem, index: int, total: int) -> None:
-    status = "必须回复" if item.required else "可选事项"
-    metadata = [status, f"ID: {item.item_id}"]
-    if item.deadline:
-        metadata.append(f"截止时间：{item.deadline}")
-    if item.uncertain:
-        metadata.append("信息待确认")
-    st.markdown(
-        f"""
-        <div class="reply-card reply-decision-card">
-          <div class="reply-meta">事项 {index + 1} / {total} ·
-            {html.escape(" · ".join(metadata))}</div>
-          <h3>{html.escape(item.description)}</h3>
-          <p>请选择您准备如何处理这一事项。系统不会替您默认接受或承诺。</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
 def _render_stance_fields(item: ReplyItem) -> None:
     stance_key = _widget_key(item.item_id, "stance")
     selected = st.session_state.get(stance_key, "")
-    display = [STANCE_LABELS[value] for value in STANCE_OPTIONS]
-    current_index = (
-        STANCE_OPTIONS.index(selected) if selected in STANCE_OPTIONS else None
+    epoch = int(st.session_state.get("reply__decision_widget_epoch", 0))
+    chosen = render_decision_option_cards(
+        STANCE_CARD_OPTIONS,
+        selected=selected,
+        key_prefix=f"reply__decision_option__{item.item_id}__{epoch}",
     )
-    label = st.selectbox(
-        "您的处理立场 · Response Position",
-        display,
-        index=current_index,
-        placeholder="请选择，不会默认接受",
-        key=f"{stance_key}__display",
-        on_change=_clear_decision_error,
-    )
-    chosen = (
-        STANCE_OPTIONS[display.index(label)] if label in display else ""
-    )
-    st.session_state[stance_key] = chosen
-    if not chosen:
+    if chosen:
+        st.session_state[stance_key] = chosen
+        selected = chosen
+        _clear_decision_error()
+    if not selected:
+        render_notice_bar(
+            "请选择处理立场",
+            "Leon AI 不会替您默认接受、承诺或拒绝任何事项。",
+        )
         return
 
-    if chosen == "accept":
+    if selected == "accept":
         st.text_area(
             "可以确认的行动或事实（必填）",
             key=_widget_key(item.item_id, "confirmed_facts"),
@@ -200,7 +199,7 @@ def _render_stance_fields(item: ReplyItem) -> None:
             key=_widget_key(item.item_id, "next_update_time"),
             placeholder="没有确定日期时请留空。",
         )
-    elif chosen == "partial":
+    elif selected == "partial":
         st.text_area(
             "可以接受或确认的部分（必填）",
             key=_widget_key(item.item_id, "accepted_part"),
@@ -217,7 +216,7 @@ def _render_stance_fields(item: ReplyItem) -> None:
             "替代方案（可选）",
             key=_widget_key(item.item_id, "alternative"),
         )
-    elif chosen == "decline":
+    elif selected == "decline":
         st.text_area(
             "可以对外说明的原因（必填）",
             key=_widget_key(item.item_id, "reason"),
@@ -230,7 +229,7 @@ def _render_stance_fields(item: ReplyItem) -> None:
             "内部审批或核实备注（仅内部使用，可选）",
             key=_widget_key(item.item_id, "user_notes"),
         )
-    elif chosen == "request_info":
+    elif selected == "request_info":
         st.text_area(
             "需要对方补充什么信息（必填）",
             key=_widget_key(item.item_id, "requested_information"),
@@ -243,7 +242,7 @@ def _render_stance_fields(item: ReplyItem) -> None:
             "收到信息后可以确认什么（可选）",
             key=_widget_key(item.item_id, "confirmed_facts"),
         )
-    elif chosen == "unable_to_confirm":
+    elif selected == "unable_to_confirm":
         st.text_area(
             "暂时无法确认的原因（必填）",
             key=_widget_key(item.item_id, "reason"),
@@ -257,8 +256,11 @@ def _render_stance_fields(item: ReplyItem) -> None:
             key=_widget_key(item.item_id, "next_update_time"),
             placeholder="尚无可靠日期时请留空。",
         )
-    elif chosen == "no_response":
-        st.warning("此事项将明确排除在生成的回复内容之外。")
+    elif selected == "no_response":
+        render_notice_bar(
+            "此事项不会写入回复",
+            "请确认这是有意的处理选择；稍后仍会在完整性检查中提示您。",
+        )
         st.checkbox(
             "我确认不在后续回复中回应此事项。",
             key=_widget_key(item.item_id, "no_response_confirmed"),
@@ -268,7 +270,7 @@ def _render_stance_fields(item: ReplyItem) -> None:
             "不回复的内部原因（可选，不会写入邮件）",
             key=_widget_key(item.item_id, "user_notes"),
         )
-    elif chosen == "custom":
+    elif selected == "custom":
         st.text_area(
             "自定义处理指令（必填）",
             key=_widget_key(item.item_id, "custom_instruction"),
@@ -290,8 +292,7 @@ def _render_overview(
             )
             marker = "当前" if index == current_index else state
             st.markdown(
-                f"**{index + 1}. {html.escape(item.description)}**  \n"
-                f"{marker} · `{html.escape(item.item_id)}`"
+                f"**{index + 1}. {item.description}**  \n{marker}"
             )
 
 
@@ -338,9 +339,17 @@ def render_reply_decisions(items: tuple[ReplyItem, ...]) -> None:
     )
     item = items[index]
     _seed_widgets(item)
-    st.markdown("### 逐项确认回复立场")
-    st.caption("Decision Guidance · 每次只处理一个事项，不会自动生成邮件。")
-    _render_item_header(item, index, len(items))
+    render_section_header("逐项确认回复立场", f"事项 {index + 1} / {len(items)}")
+    st.caption("每次只处理一个事项；回复只会使用您确认的立场和事实。")
+    render_decision_focus_card(
+        index=index + 1,
+        total=len(items),
+        title=item.description,
+        deadline=item.deadline,
+        required=item.required,
+        uncertain=item.uncertain,
+    )
+    st.markdown("#### 选择您的处理立场")
     _render_stance_fields(item)
 
     error = str(st.session_state.get("reply__decision_error", ""))
@@ -353,7 +362,7 @@ def render_reply_decisions(items: tuple[ReplyItem, ...]) -> None:
     )
     if risk is not None and risk.requires_confirmation:
         with st.expander("决策内容风险提醒", expanded=True):
-            st.warning(risk.summary)
+            render_notice_bar("需要确认", risk.summary, icon="!")
             for risk_item in risk.risk_items:
                 st.markdown(
                     f"**{risk_item.category}**：{risk_item.description}  \n"
@@ -369,43 +378,34 @@ def render_reply_decisions(items: tuple[ReplyItem, ...]) -> None:
                 ] = digest
             st.caption(ADVISORY_NOTICE)
 
-    left, middle, right = st.columns(3)
-    with left:
-        if st.button(
-            "返回",
-            key=f"reply__decision_back__{item.item_id}",
-            use_container_width=True,
-        ):
-            if index == 0:
-                return_to_reply_analysis()
-            else:
-                set_reply_item_index(index - 1)
+    button_label = "查看回复决策" if index == len(items) - 1 else "保存并继续 →"
+    back_clicked, next_clicked = render_guided_action_bar(
+        back_label="← 上一项" if index else "← 返回分析",
+        back_key=f"reply__decision_back__{item.item_id}",
+        next_label=button_label,
+        next_key=f"reply__decision_next__{item.item_id}",
+    )
+    if back_clicked:
+        if index == 0:
+            return_to_reply_analysis()
+        else:
+            set_reply_item_index(index - 1)
+        st.rerun()
+    if next_clicked:
+        if not _save_decision(item):
             st.rerun()
-    with middle:
-        st.button(
-            "清除此项",
-            key=f"reply__decision_clear__{item.item_id}",
-            use_container_width=True,
-            on_click=_clear_current,
-            args=(item.item_id,),
-        )
-    with right:
-        button_label = (
-            "检查决策摘要" if index == len(items) - 1 else "保存并继续"
-        )
-        if st.button(
-            button_label,
-            key=f"reply__decision_next__{item.item_id}",
-            type="primary",
-            use_container_width=True,
-        ):
-            if not _save_decision(item):
-                st.rerun()
-            if index == len(items) - 1:
-                _try_finish(items)
-            else:
-                set_reply_item_index(index + 1)
-                st.rerun()
+        if index == len(items) - 1:
+            _try_finish(items)
+        else:
+            set_reply_item_index(index + 1)
+            st.rerun()
+
+    if tertiary_action_button(
+        "清除此项",
+        key=f"reply__decision_clear__{item.item_id}",
+    ):
+        _clear_current(item.item_id)
+        st.rerun()
 
     if not item.required:
         if st.button(
@@ -428,67 +428,76 @@ def render_reply_decisions(items: tuple[ReplyItem, ...]) -> None:
     )
 
 
-def _summary_list(
-    title: str,
-    items: tuple[ReplyItem, ...],
-    decisions: dict[str, dict],
-    *,
-    show_stance: bool = True,
-) -> None:
-    if not items:
-        return
-    lines = []
-    for item in items:
-        stance = ""
-        if show_stance and item.item_id in decisions:
-            stance = (
-                f" · {STANCE_LABELS.get(decisions[item.item_id]['stance'], '')}"
+def _summary_entries(
+    items: tuple[ReplyItem, ...], decisions: dict[str, dict]
+) -> tuple[DecisionSummaryEntry, ...]:
+    entries: list[DecisionSummaryEntry] = []
+    kinds = {
+        "accept": "success",
+        "partial": "warning",
+        "unable_to_confirm": "info",
+        "request_info": "warning",
+        "decline": "risk",
+        "no_response": "info",
+        "custom": "info",
+    }
+    for number, item in enumerate(items, start=1):
+        decision = decisions.get(item.item_id)
+        if not decision:
+            continue
+        stance = str(decision.get("stance", ""))
+        if stance == "no_response":
+            explanation = "本次邮件中不回应此事项。"
+        else:
+            explanation = next(
+                (
+                    str(decision.get(field, "")).strip()
+                    for field in (
+                        "confirmed_facts", "accepted_part", "reason",
+                        "requested_information", "custom_instruction",
+                    )
+                    if str(decision.get(field, "")).strip()
+                ),
+                "已记录您的处理立场。",
             )
-        lines.append(
-            f"<li>{html.escape(item.description + stance)}</li>"
+        entries.append(
+            DecisionSummaryEntry(
+                number=number,
+                title=item.description,
+                position=STANCE_LABELS.get(stance, "已确认"),
+                explanation=explanation,
+                kind=kinds.get(stance, "info"),
+            )
         )
-    st.markdown(
-        f'<div class="reply-card"><h3>{html.escape(title)}</h3>'
-        f"<ul>{''.join(lines)}</ul></div>",
-        unsafe_allow_html=True,
-    )
+    return tuple(entries)
 
 
 def render_reply_summary(items: tuple[ReplyItem, ...]) -> bool:
     decisions = dict(st.session_state.get("reply__decisions", {}))
     summary = build_decision_summary(items, decisions)
     st.session_state["reply__decision_summary"] = summary
-    st.markdown("### 回复决策摘要")
-    st.caption("Decision Summary · 仅整理您的决定，尚未生成回复邮件。")
+    render_section_header("回复策略确认", "DECISION SUMMARY")
+    st.caption("以下内容会作为生成回复的唯一依据；系统尚未生成邮件。")
     if st.session_state.get("reply__generation_error"):
         st.error(st.session_state["reply__generation_error"])
-    _summary_list("已确认的回复事项", summary.decided, decisions)
-    _summary_list("明确不回复的事项", summary.excluded, decisions)
-    _summary_list(
-        "已跳过的可选事项",
-        summary.skipped_optional,
-        decisions,
-        show_stance=False,
-    )
-    _summary_list(
-        "仍未完成的事项",
-        summary.undecided,
-        decisions,
-        show_stance=False,
-    )
+    entries = _summary_entries(items, decisions)
+    if entries:
+        render_decision_summary_cards(entries)
+    if summary.undecided:
+        render_notice_bar(
+            "仍有事项待确认",
+            "请返回逐项确认，完成后再生成邮件。",
+            icon="!",
+        )
 
     risk = st.session_state.get("reply__decision_risk")
     if risk is not None:
         level = {"low": "低", "medium": "中", "high": "高"}[
             risk.risk_level
         ]
-        st.markdown(
-            f'<div class="reply-card"><h3>内容风险 · {level}</h3>'
-            f"<p>{html.escape(risk.summary)}</p></div>",
-            unsafe_allow_html=True,
-        )
+        render_notice_bar(f"内容风险 · {level}", risk.summary, icon="!")
     if summary.ready:
-        st.success("回复立场已逐项确认，可以进入下一阶段。")
+        render_status_badge("回复立场已确认", "success")
     else:
         st.warning("仍有必须回复的事项尚未完成。")
     st.selectbox(
@@ -504,25 +513,18 @@ def render_reply_summary(items: tuple[ReplyItem, ...]) -> bool:
         help="语气只影响表达方式，不会改变已确认的事实和立场。",
     )
     generate = st.button(
-        "生成英文回复 · Generate Reply",
+        "生成回复",
         key="reply__generate_reply",
         type="primary",
         use_container_width=True,
         disabled=not summary.ready,
     )
-    left, right = st.columns(2)
-    with left:
-        st.button(
-            "返回修改决定",
-            key="reply__summary_back",
-            use_container_width=True,
-            on_click=return_to_reply_decisions,
-        )
-    with right:
-        st.button(
-            "返回来信分析",
-            key="reply__summary_analysis",
-            use_container_width=True,
-            on_click=return_to_reply_analysis,
-        )
+    if secondary_action_button(
+        "返回修改回复立场", key="reply__summary_back"
+    ):
+        return_to_reply_decisions()
+        st.rerun()
+    if tertiary_action_button("返回来信分析", key="reply__summary_analysis"):
+        return_to_reply_analysis()
+        st.rerun()
     return generate

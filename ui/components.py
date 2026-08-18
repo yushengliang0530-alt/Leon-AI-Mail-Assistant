@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import base64
 from dataclasses import dataclass
 import html
+import json
 
 import streamlit as st
 
@@ -59,6 +61,46 @@ class AnalysisNotice:
     title: str
     body: str
     kind: str = "info"
+
+
+@dataclass(frozen=True)
+class DecisionOption:
+    """One user-facing reply-position choice in the guided decision canvas."""
+
+    key: str
+    title: str
+    helper: str
+
+
+@dataclass(frozen=True)
+class DecisionSummaryEntry:
+    """A concise, presentation-only account of one confirmed decision."""
+
+    number: int
+    title: str
+    position: str
+    explanation: str
+    kind: str = "info"
+
+
+@dataclass(frozen=True)
+class CoveragePresentationItem:
+    """A user-facing coverage item without exposing a workflow identifier."""
+
+    title: str
+    status: str
+    note: str
+    kind: str
+
+
+@dataclass(frozen=True)
+class PreflightPresentationItem:
+    """A user-facing send-ready check without exposing implementation fields."""
+
+    title: str
+    message: str
+    suggestion: str | None
+    kind: str
 
 
 def render_global_header(
@@ -427,6 +469,268 @@ def render_strategy_list(
                 + "</ol>",
                 unsafe_allow_html=True,
             )
+
+
+def render_decision_focus_card(
+    *,
+    index: int,
+    total: int,
+    title: str,
+    deadline: str | None,
+    required: bool,
+    uncertain: bool,
+) -> None:
+    """Keep the current business item legible before asking for a decision."""
+    metadata = ["必须回复" if required else "可选事项"]
+    if deadline:
+        metadata.append(f"原要求截止时间：{deadline}")
+    if uncertain:
+        metadata.append("信息待确认")
+    st.markdown(
+        f"""
+        <section class="la-decision-focus">
+          <div class="la-decision-focus__step">事项 {index} / {total}</div>
+          <div class="la-decision-focus__label">对方希望你回复</div>
+          <h2>{html.escape(title)}</h2>
+          <div class="la-decision-focus__meta">{html.escape(' · '.join(metadata))}</div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_decision_option_cards(
+    options: tuple[DecisionOption, ...],
+    *,
+    selected: str,
+    key_prefix: str,
+) -> str | None:
+    """Render selection cards and return the key selected during this rerun."""
+    clicked: str | None = None
+    with st.container(key=f"decision_options__{key_prefix}"):
+        for option in options:
+            is_selected = option.key == selected
+            if st.button(
+                f"{option.title}\n{option.helper}",
+                key=f"{key_prefix}__{option.key}",
+                type="primary" if is_selected else "secondary",
+                use_container_width=True,
+            ):
+                clicked = option.key
+    return clicked
+
+
+def render_guided_action_bar(
+    *,
+    back_label: str,
+    back_key: str,
+    next_label: str,
+    next_key: str,
+) -> tuple[bool, bool]:
+    """Render a consistent previous/next action pair for a guided step."""
+    with st.container(key=f"guided_action_bar__{next_key}"):
+        columns = st.columns((0.42, 0.58), gap="small")
+        with columns[0]:
+            back_clicked = secondary_action_button(back_label, key=back_key)
+        with columns[1]:
+            next_clicked = primary_action_button(next_label, key=next_key)
+    return back_clicked, next_clicked
+
+
+def render_decision_summary_cards(
+    entries: tuple[DecisionSummaryEntry, ...],
+) -> None:
+    """Display the facts and positions that will guide reply generation."""
+    allowed = {"info", "warning", "risk", "success"}
+    cards = "".join(
+        f"""
+        <article class="la-decision-summary-card la-decision-summary-card--{entry.kind if entry.kind in allowed else 'info'}">
+          <span class="la-decision-summary-card__number">{entry.number:02d}</span>
+          <div>
+            <strong>{html.escape(entry.title)}</strong>
+            <em>{html.escape(entry.position)}</em>
+            <p>{html.escape(entry.explanation)}</p>
+          </div>
+        </article>
+        """
+        for entry in entries
+    )
+    st.markdown(
+        f'<div class="la-decision-summary-cards">{cards}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_email_subject_card(
+    *,
+    value_key: str,
+    on_change: Callable[[], None],
+) -> str:
+    """Render the editable subject as a dedicated, compact email surface."""
+    with st.container(key=f"email_subject__{value_key}"):
+        st.markdown('<div class="la-email-subject__label">Subject</div>', unsafe_allow_html=True)
+        value = st.text_input(
+            "邮件主题",
+            key=value_key,
+            label_visibility="collapsed",
+            on_change=on_change,
+        )
+        render_copy_button(
+            label="复制主题",
+            value=value,
+            key=f"copy_subject__{value_key}",
+        )
+    return value
+
+
+def render_email_editor(
+    *,
+    value_key: str,
+    on_change: Callable[[], None],
+) -> str:
+    """Render the editable body in a roomy email-oriented writing surface."""
+    with st.container(key=f"email_editor__{value_key}"):
+        st.markdown(
+            '<div class="la-email-editor__label">Email Body</div>',
+            unsafe_allow_html=True,
+        )
+        value = st.text_area(
+            "邮件正文",
+            key=value_key,
+            label_visibility="collapsed",
+            height=420,
+            on_change=on_change,
+        )
+        render_copy_button(
+            label="复制正文",
+            value=value,
+            key=f"copy_body__{value_key}",
+        )
+    return value
+
+
+def render_copy_button(
+    *, label: str, value: str, key: str, primary: bool = False
+) -> None:
+    """Offer a graceful clipboard control without relying on server-side copy."""
+    encoded = base64.b64encode(value.encode("utf-8")).decode("ascii")
+    safe_label = html.escape(label)
+    background = "#2563eb" if primary else "#fff"
+    color = "#fff" if primary else "#334155"
+    border = "#2563eb" if primary else "#dbe5f1"
+    st.iframe(
+        f"""
+        <button id="{html.escape(key)}" onclick="copyValue()" style="
+          width:100%;height:40px;border:1px solid {border};border-radius:10px;
+          background:{background};color:{color};font:650 13px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;cursor:pointer">
+          {safe_label}
+        </button>
+        <script>
+        async function copyValue() {{
+          const button = document.getElementById({json.dumps(key)});
+          try {{
+            const bytes = Uint8Array.from(atob({json.dumps(encoded)}), c => c.charCodeAt(0));
+            await navigator.clipboard.writeText(new TextDecoder().decode(bytes));
+            button.textContent = "已复制";
+          }} catch (error) {{
+            button.textContent = "复制失败，请手动复制";
+          }}
+        }}
+        </script>
+        """,
+        height=46,
+        width="stretch",
+    )
+
+
+def render_coverage_summary(
+    *,
+    covered_count: int,
+    total_count: int,
+    partial_count: int,
+    not_addressed_count: int,
+) -> None:
+    parts = [f"{covered_count} 项已覆盖"]
+    if partial_count:
+        parts.append(f"{partial_count} 项部分覆盖")
+    if not_addressed_count:
+        parts.append(f"{not_addressed_count} 项暂未回复")
+    st.markdown(
+        f"""
+        <section class="la-coverage-summary">
+          <div class="la-coverage-summary__label">回复完整性</div>
+          <strong>{html.escape(' · '.join(parts))}</strong>
+          <span>共 {total_count} 个需要处理的事项</span>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_coverage_items(items: tuple[CoveragePresentationItem, ...]) -> None:
+    allowed = {"success", "info", "warning", "risk"}
+    cards = "".join(
+        f"""
+        <article class="la-coverage-item la-coverage-item--{item.kind if item.kind in allowed else 'info'}">
+          <div><strong>{html.escape(item.title)}</strong><em>{html.escape(item.status)}</em></div>
+          <p>{html.escape(item.note)}</p>
+        </article>
+        """
+        for item in items
+    )
+    st.markdown(f'<div class="la-coverage-items">{cards}</div>', unsafe_allow_html=True)
+
+
+def render_preflight_summary(*, status: str, summary: str) -> None:
+    presentation = {
+        "GOOD": ("未发现明显需要修改的问题", "success"),
+        "CHECK": ("建议确认后发送", "warning"),
+        "WARNING": ("存在需要重点确认的内容", "risk"),
+    }
+    title, kind = presentation.get(status, presentation["CHECK"])
+    st.markdown(
+        f"""
+        <section class="la-preflight-summary la-preflight-summary--{kind}">
+          <span class="la-status-badge la-status-badge--{kind}">{html.escape(title)}</span>
+          <p>{html.escape(summary)}</p>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_preflight_items(
+    items: tuple[PreflightPresentationItem, ...],
+    *,
+    kind: str,
+) -> None:
+    allowed = {"success", "warning", "risk"}
+    safe_kind = kind if kind in allowed else "warning"
+    rows = "".join(
+        f"""
+        <article class="la-preflight-item la-preflight-item--{safe_kind}">
+          <strong>{html.escape(item.title)}</strong>
+          <p>{html.escape(item.message)}</p>
+          {f'<small>建议：{html.escape(item.suggestion)}</small>' if item.suggestion else ''}
+        </article>
+        """
+        for item in items
+    )
+    st.markdown(f'<div class="la-preflight-items">{rows}</div>', unsafe_allow_html=True)
+
+
+def render_completion_panel() -> None:
+    """Make the end of the workflow explicit without implying send capability."""
+    st.markdown(
+        """
+        <section class="la-completion-panel">
+          <div class="la-completion-panel__eyebrow">REPLY READY</div>
+          <h2>邮件已准备完成</h2>
+          <p>Leon AI 已完成内容生成、回复完整性和发送前检查。请在 Outlook 或 Gmail 中最终确认后发送。</p>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def render_workspace_empty_state(title: str, helper: str) -> None:

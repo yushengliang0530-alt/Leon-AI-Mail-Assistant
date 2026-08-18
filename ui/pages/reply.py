@@ -38,6 +38,7 @@ from ui.components import (
     render_analysis_notices,
     render_analysis_summary_panel,
     render_empty_state,
+    render_loading_state,
     render_section_header,
     render_strategy_list,
     tertiary_action_button,
@@ -54,6 +55,7 @@ from ui.state import (
     prepare_reply_reanalysis,
     invalidate_preflight,
     return_to_home,
+    return_to_reply_decisions,
     start_reply_decisions,
     sync_reply_source,
 )
@@ -460,10 +462,29 @@ def render_reply_workspace(
         elif step == 3:
             if render_reply_summary(items):
                 _generate_and_check(generation_service, analysis, items)
-        elif step in (4, 5):
-            if render_reply_result():
+        elif step == 4:
+            item_titles = {item.item_id: item.description for item in items}
+            action = render_reply_result(item_titles=item_titles)
+            if action == "recheck":
                 _run_coverage(generation_service, items)
-            if step == 5 and render_preflight_panel():
+            elif action == "regenerate":
+                _generate_and_check(generation_service, analysis, items)
+            elif action == "back":
+                return_to_reply_decisions()
+                st.rerun()
+            elif action == "preflight":
+                st.session_state["reply__step"] = 5
+                st.rerun()
+        elif step == 5:
+            # Streamlit clears widgets that are absent from the Check canvas.
+            # These snapshots preserve only the user-edited presentation values.
+            st.session_state["reply__subject"] = str(
+                st.session_state.get("reply__presentation_subject", "")
+            )
+            st.session_state["reply__body"] = str(
+                st.session_state.get("reply__presentation_body", "")
+            )
+            if render_preflight_panel():
                 _run_preflight(preflight_service, analysis)
         else:
             _render_result(analysis)
@@ -532,7 +553,7 @@ def _run_coverage(
         st.session_state["reply__coverage_error"] = (
             "覆盖检查暂时不可用，请重新检查。"
         )
-    st.session_state["reply__step"] = 5
+    st.session_state["reply__step"] = 4
     st.rerun()
 
 
@@ -630,6 +651,10 @@ def _generate_and_check(
         ),
     )
     try:
+        render_loading_state(
+            "正在生成商务回复…",
+            "正在整理已确认立场，准备清晰、专业的英文回复。",
+        )
         with st.spinner("正在根据已确认立场生成英文回复…"):
             result = service.generate(
                 analysis=analysis,
@@ -646,6 +671,8 @@ def _generate_and_check(
         st.session_state["reply__generated_email"] = result
         st.session_state["reply__subject"] = result.subject
         st.session_state["reply__body"] = result.body
+        st.session_state["reply__presentation_subject"] = result.subject
+        st.session_state["reply__presentation_body"] = result.body
         st.session_state["reply__generation_status"] = "success"
         st.session_state["reply__generation_duration"] = (
             time.perf_counter() - started
