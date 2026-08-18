@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from ui import components, styles
-from ui.pages import compose_supplier, explore, home, workspace_foundation
+from ui.pages import compose_supplier, explore, home, improve
 
 
 EXPECTED_ACTIONS = {"reply", "create", "improve"}
@@ -77,20 +77,19 @@ class HomeTaskCardTests(unittest.TestCase):
             all(not item["available"] for key, item in items.items() if key != "supplier")
         )
 
-    def test_workspaces_use_single_shell_without_create_placeholder(self) -> None:
+    def test_workspaces_use_single_shell_without_improve_placeholder(self) -> None:
         source = inspect.getsource(compose_supplier.render_create_workspace)
-        improve_source = inspect.getsource(
-            workspace_foundation.render_improve_workspace
-        )
+        improve_source = inspect.getsource(improve.render_improve_workspace)
         self.assertIn("render_workspace_shell", source)
         self.assertIn("_workflow_steps", source)
         self.assertIn("_render_step_one", source)
         self.assertIn("_render_step_four", source)
         self.assertIn("render_workspace_shell", improve_source)
-        self.assertIn("render_workspace_empty_state", improve_source)
-        self.assertIn("render_action_bar", improve_source)
+        self.assertIn("_render_draft_step", improve_source)
+        self.assertIn("_render_target_step", improve_source)
+        self.assertIn("_render_result_step", improve_source)
         self.assertEqual(len(compose_supplier.CREATE_WORKFLOW_STEPS), 4)
-        self.assertEqual(len(workspace_foundation.IMPROVE_WORKFLOW_STEPS), 3)
+        self.assertEqual(len(improve.IMPROVE_WORKFLOW_STEPS), 3)
 
     def test_design_tokens_cover_required_status_and_spacing_values(self) -> None:
         source = inspect.getsource(styles)
@@ -122,6 +121,14 @@ class HomeTaskCardTests(unittest.TestCase):
         self.assertIn("flex-direction:column", compact)
         self.assertIn("overflow-x:clip", compact)
 
+    def test_improve_comparison_uses_shared_panels_and_mobile_safe_styles(self) -> None:
+        page_source = inspect.getsource(improve)
+        style_source = inspect.getsource(styles)
+        self.assertIn("render_before_after_panel", page_source)
+        self.assertIn("render_copy_button", page_source)
+        self.assertIn("st-key-workspace__improve", style_source)
+        self.assertIn("@media (max-width:768px)", style_source)
+
     def test_common_workspace_components_are_available(self) -> None:
         for name in (
             "render_global_header",
@@ -133,6 +140,8 @@ class HomeTaskCardTests(unittest.TestCase):
             "render_scenario_cards",
             "render_guided_question_header",
             "render_review_items",
+            "render_optimization_option_cards",
+            "render_before_after_panel",
         ):
             self.assertTrue(callable(getattr(components, name)))
 

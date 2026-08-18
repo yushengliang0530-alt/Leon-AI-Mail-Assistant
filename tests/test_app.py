@@ -79,9 +79,7 @@ class StreamlitAppTests(unittest.TestCase):
             self.assertIsNotNone(app.button(key="compose__task__supplier_delivery"))
             self.assertEqual(generate_mock.call_count, 0)
 
-    def test_improve_workspace_is_presentation_only_and_opens_existing_editor(
-        self,
-    ) -> None:
+    def test_improve_workspace_opens_draft_step_without_ai(self) -> None:
         app = self.create_home()
         with patch(
             "ai_service.DeepSeekEmailService.improve_email",
@@ -94,21 +92,76 @@ class StreamlitAppTests(unittest.TestCase):
                 "improve_workspace",
             )
             self.assertIn(
-                "让已有草稿更清晰、更适合商务沟通",
+                "Improve Draft Workspace",
                 "\n".join(item.value for item in app.markdown),
+            )
+            self.assertIsNotNone(app.text_input(key="improve__draft_subject"))
+            self.assertIsNotNone(app.text_area(key="improve_original_email"))
+            self.assertIsNotNone(app.button(key="improve__draft_continue"))
+            self.assertEqual(improve_mock.call_count, 0)
+
+    def test_improve_workspace_requires_a_draft_before_advancing(self) -> None:
+        app = self.create_home()
+        with patch("ai_service.DeepSeekEmailService.improve_email") as improve_mock:
+            app.button(key="home__action__improve").click().run(timeout=10)
+            app.button(key="improve__draft_continue").click().run(timeout=10)
+
+            self.assertEqual(app.session_state["improve__step"], 1)
+            self.assertEqual(
+                app.error[0].value,
+                "请先粘贴需要优化的英文邮件。",
             )
             self.assertEqual(improve_mock.call_count, 0)
 
-            app.button(key="improve_workspace__open_editor").click().run(
-                timeout=10
+    def test_improve_workspace_uses_targets_then_preserves_editable_result(self) -> None:
+        app = self.create_home()
+        result = EmailResult(
+            subject="Updated delivery plan",
+            body="Dear Team,\n\nPlease confirm the revised delivery plan.\n\nBest regards,",
+            usage_tokens=42,
+        )
+        with patch(
+            "ai_service.DeepSeekEmailService.improve_email",
+            return_value=result,
+        ) as improve_mock:
+            app.button(key="home__action__improve").click().run(timeout=10)
+            app.text_input(key="improve__draft_subject").set_value("Delivery plan")
+            app.text_area(key="improve_original_email").set_value(
+                "please confirm the delivery plan"
             )
-            self.assertFalse(list(app.exception))
+            app.button(key="improve__draft_continue").click().run(timeout=10)
+
+            self.assertEqual(app.session_state["improve__step"], 2)
+            self.assertIsNotNone(app.button(key="improve__tone__formal"))
+            self.assertIsNotNone(app.button(key="improve__tone__friendly"))
+            self.assertTrue(
+                any(expander.label == "高级选项" for expander in app.expander)
+            )
+            app.button(key="improve__tone__friendly").click().run(timeout=10)
             self.assertEqual(
-                app.session_state["writing_mode"],
-                "优化英文邮件",
+                app.session_state["saved_improve_tone_choice"],
+                "友好 · Friendly",
             )
-            self.assertIsNotNone(app.button(key="legacy__improve_submit"))
-            self.assertEqual(improve_mock.call_count, 0)
+
+            app.button(key="improve__start").click().run(timeout=10)
+            self.assertFalse(list(app.exception))
+            self.assertEqual(improve_mock.call_count, 1)
+            self.assertEqual(app.session_state["improve__step"], 3)
+            rendered = "\n".join(item.value for item in app.markdown)
+            self.assertIn("原始版本", rendered)
+            self.assertIn("优化版本", rendered)
+            self.assertEqual(
+                app.text_input(key="improved_subject_editor").value,
+                "Updated delivery plan",
+            )
+            app.text_area(key="improved_body_editor").set_value("Edited result.")
+            self.assertEqual(app.text_area(key="improved_body_editor").value, "Edited result.")
+            app.run(timeout=10)
+            self.assertEqual(improve_mock.call_count, 1)
+
+            app.button(key="improve__again").click().run(timeout=10)
+            self.assertEqual(app.session_state["improve__step"], 2)
+            self.assertEqual(improve_mock.call_count, 1)
 
     def test_explore_more_returns_home_and_routes_supplier_without_ai(self) -> None:
         app = self.create_home()
@@ -999,8 +1052,9 @@ class StreamlitAppTests(unittest.TestCase):
 
     def test_legacy_improve_is_reachable_and_can_return_home(self) -> None:
         app = self.create_home()
-        app.button(key="home__action__improve").click().run(timeout=10)
-        app.button(key="improve_workspace__open_editor").click().run(timeout=10)
+        app.session_state["system__active_page"] = "legacy_improve_editor"
+        app.session_state["writing_mode"] = "优化英文邮件"
+        app.run(timeout=10)
         self.assertIsNotNone(app.text_area(key="improve_original_email"))
         self.assertEqual(app.session_state["writing_mode"], "优化英文邮件")
         app.button(key="legacy__return_home").click().run(timeout=10)

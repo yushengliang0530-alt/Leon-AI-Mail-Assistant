@@ -56,6 +56,16 @@ class ReviewItem:
 
 
 @dataclass(frozen=True)
+class OptimizationOption:
+    """A presentation-only choice mapped to an existing optimization tone."""
+
+    key: str
+    title: str
+    description: str
+    icon: str
+
+
+@dataclass(frozen=True)
 class AnalysisAction:
     """Presentation-only information required by one analysis action card."""
 
@@ -377,6 +387,76 @@ def render_review_items(
                 ):
                     selected = item.key
     return selected
+
+
+def render_optimization_option_cards(
+    options: tuple[OptimizationOption, ...],
+    *,
+    selected: str,
+    key_prefix: str,
+) -> str | None:
+    """Render one clear choice without changing the underlying tone values."""
+    chosen: str | None = None
+    with st.container(key=f"optimization_options__{key_prefix}"):
+        for option in options:
+            is_selected = option.key == selected
+            if st.button(
+                f"{option.title}\n{option.description}",
+                key=f"{key_prefix}{option.key}",
+                type="primary" if is_selected else "secondary",
+                icon=f":material/{option.icon}:",
+                use_container_width=True,
+            ):
+                chosen = option.key
+    return chosen
+
+
+def render_before_after_panel(
+    *,
+    original_subject: str,
+    original_body: str,
+    render_after: Callable[[], None],
+) -> None:
+    """Present the original as read-only beside an editable final email."""
+    before, after = st.columns(2, gap="large")
+    with before:
+        with st.container(key="improve__before_panel"):
+            st.markdown("#### 原始版本")
+            st.caption("Original draft · 只读参考")
+            st.markdown('<div class="la-email-subject__label">Subject</div>', unsafe_allow_html=True)
+            st.text_input(
+                "原始主题",
+                value=original_subject or "未提供主题",
+                disabled=True,
+                key="improve__before_subject",
+                label_visibility="collapsed",
+            )
+            st.markdown('<div class="la-email-editor__label">Email Body</div>', unsafe_allow_html=True)
+            st.text_area(
+                "原始正文",
+                value=original_body,
+                height=420,
+                disabled=True,
+                key="improve__before_body",
+                label_visibility="collapsed",
+            )
+    with after:
+        with st.container(key="improve__after_panel"):
+            st.markdown("#### 优化版本")
+            st.caption("Improved draft · 可继续编辑")
+            render_after()
+
+
+def render_optimization_summary(items: tuple[str, ...]) -> None:
+    """Keep the outcome explanation short and tied to existing result analysis."""
+    if not items:
+        return
+    st.markdown(
+        '<ul class="la-optimization-summary">'
+        + "".join(f"<li>{html.escape(item)}</li>" for item in items[:4])
+        + "</ul>",
+        unsafe_allow_html=True,
+    )
 
 
 def render_status_badge(label: str, kind: str = "info") -> None:

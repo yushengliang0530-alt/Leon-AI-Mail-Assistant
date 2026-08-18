@@ -1014,6 +1014,36 @@ def inject_workspace_home_styles() -> None:
             .st-key-workspace__create [class*="st-key-compose__task__"] > button { min-height:6.4rem; }
         }
 
+        /* Improve Draft workspace: source, focused choices and result comparison. */
+        .st-key-workspace__improve [class*="st-key-improve__draft_canvas"] {
+            padding:var(--la-space-5); border:1px solid var(--la-border);
+            border-radius:var(--la-radius-card); background:var(--la-surface); box-shadow:var(--la-shadow-sm);
+        }
+        .st-key-workspace__improve [class*="st-key-improve__draft_canvas"] textarea { min-height:20rem; }
+        .st-key-workspace__improve [class*="st-key-improve__tone__"] > button {
+            min-height:5.6rem; margin-bottom:var(--la-space-2); padding:var(--la-space-3) var(--la-space-4);
+            border:1px solid var(--la-border); border-radius:var(--la-radius-md); background:var(--la-surface);
+            color:var(--la-ink); text-align:left; white-space:pre-line;
+        }
+        .st-key-workspace__improve [class*="st-key-improve__tone__"] > button:hover {
+            border-color:#93c5fd; background:var(--la-info-bg);
+        }
+        .st-key-workspace__improve [class*="st-key-improve__tone__"] > button p { text-align:left; line-height:1.55; }
+        .st-key-workspace__improve [class*="st-key-improve__before_panel"],
+        .st-key-workspace__improve [class*="st-key-improve__after_panel"] {
+            min-width:0; padding:var(--la-space-4); border:1px solid var(--la-border);
+            border-radius:var(--la-radius-card); background:var(--la-surface); box-shadow:var(--la-shadow-sm);
+        }
+        .st-key-workspace__improve [class*="st-key-improve__before_panel"] textarea { background:#f8fafc; color:var(--la-text); }
+        .la-optimization-summary { display:grid; gap:var(--la-space-2); margin:var(--la-space-3) 0 0; padding:0; list-style:none; }
+        .la-optimization-summary li { position:relative; padding-left:1.2rem; color:var(--la-text); font-size:.83rem; line-height:1.55; }
+        .la-optimization-summary li::before { position:absolute; left:0; color:var(--la-success); content:"✓"; font-weight:760; }
+        @media (max-width:768px) {
+            .st-key-workspace__improve [class*="st-key-improve__draft_canvas"] { padding:var(--la-space-4); }
+            .st-key-workspace__improve [class*="st-key-improve__before_panel"],
+            .st-key-workspace__improve [class*="st-key-improve__after_panel"] { padding:var(--la-space-3); }
+        }
+
         /* Reply decision, generation and send-ready workspace surfaces. */
         .st-key-workspace__reply .la-decision-focus {
             margin:var(--la-space-3) 0 var(--la-space-5);
