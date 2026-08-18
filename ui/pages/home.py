@@ -88,7 +88,7 @@ def render_home(
             on_click=open_reply_workspace,
         )
 
-        render_section_header("继续处理", "CONTINUE WITH LEON AI")
+        render_section_header("常用任务", "EVERYDAY TASKS")
         task_columns = st.columns(2)
         callbacks = {
             "create": open_create_workspace,

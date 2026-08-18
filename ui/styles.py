@@ -75,12 +75,11 @@ def inject_global_styles() -> None:
 
         [data-testid="stButton"] > button:focus-visible,
         [data-testid="stTextInputRootElement"]:focus-within,
-        [data-testid="stTextArea"] textarea:focus {
+        [data-testid="stTextArea"] textarea:focus-visible {
             outline:3px solid rgba(37,99,235,.22);
             outline-offset:2px;
         }
 
-        .la-page-header,
         .la-global-header,
         .la-summary-card,
         .la-notice,
@@ -160,51 +159,6 @@ def inject_global_styles() -> None:
         .la-status-badge--info { border-color:#bfdbfe; background:var(--la-info-bg); color:var(--la-info); }
         .la-status-badge--warning { border-color:#fed7aa; background:#fff7ed; color:var(--la-warning); }
         .la-status-badge--risk { border-color:#fecaca; background:#fef2f2; color:var(--la-risk); }
-
-        .la-page-header {
-            display:flex;
-            align-items:flex-start;
-            gap:var(--la-space-4);
-            margin:0 0 var(--la-space-6);
-            padding:var(--la-space-5);
-            border:1px solid var(--la-border);
-            border-radius:var(--la-radius-card);
-            background:var(--la-surface);
-            box-shadow:var(--la-shadow-sm);
-        }
-        .la-page-header__icon {
-            display:grid;
-            flex:0 0 2.75rem;
-            width:2.75rem;
-            height:2.75rem;
-            place-items:center;
-            border-radius:var(--la-radius-md);
-            background:var(--la-info-bg);
-            color:var(--la-primary);
-        }
-        .la-page-header__eyebrow,
-        .la-section-header__eyebrow {
-            margin:0 0 var(--la-space-1);
-            color:var(--la-primary);
-            font-size:.69rem;
-            font-weight:760;
-            letter-spacing:.1em;
-            text-transform:uppercase;
-        }
-        .la-page-header h1 {
-            margin:0;
-            color:var(--la-ink);
-            font-size:clamp(1.65rem,4vw,2.35rem);
-            font-weight:780;
-            letter-spacing:-.035em;
-            line-height:1.18;
-        }
-        .la-page-header p {
-            margin:var(--la-space-2) 0 0;
-            color:var(--la-text);
-            font-size:.92rem;
-            line-height:1.65;
-        }
 
         .la-section-header {
             display:flex;
@@ -451,6 +405,20 @@ def inject_global_styles() -> None:
         .la-loading-state strong { display:block; margin-bottom:var(--la-space-2); color:var(--la-ink); }
         .la-empty-state span,
         .la-loading-state span { color:var(--la-muted); font-size:.8rem; line-height:1.55; }
+        .la-empty-state__icon,
+        .la-loading-state__icon {
+            display:grid;
+            width:2rem;
+            height:2rem;
+            margin:0 auto var(--la-space-3);
+            place-items:center;
+            border-radius:999px;
+            background:var(--la-info-bg);
+            color:var(--la-primary);
+            font-size:1rem;
+            font-weight:780;
+            letter-spacing:.08em;
+        }
 
         .la-action-bar {
             display:flex;
@@ -466,8 +434,8 @@ def inject_global_styles() -> None:
         }
         [class*="st-key-tertiary_action__"] { margin-top:var(--la-space-3); }
         [class*="st-key-tertiary_action__"] [data-testid="stButton"] > button {
-            min-height:2rem;
-            padding:0;
+            min-height:2.75rem;
+            padding:var(--la-space-2) 0;
             border-color:transparent;
             background:transparent;
             box-shadow:none;
@@ -492,6 +460,23 @@ def inject_global_styles() -> None:
             background:var(--la-surface);
             box-shadow:var(--la-shadow-sm);
         }
+        .la-workspace-header__lead {
+            display:flex;
+            min-width:0;
+            gap:var(--la-space-4);
+        }
+        .la-workspace-header__lead > div { min-width:0; }
+        .la-workspace-header__icon {
+            display:grid;
+            flex:0 0 2.75rem;
+            width:2.75rem;
+            height:2.75rem;
+            place-items:center;
+            border-radius:var(--la-radius-md);
+            background:var(--la-info-bg);
+            color:var(--la-primary);
+        }
+        .la-workspace-header__icon svg { width:1.35rem; height:1.35rem; }
         .la-workspace-header__eyebrow {
             margin-bottom:var(--la-space-1);
             color:var(--la-primary);
@@ -705,20 +690,17 @@ def inject_global_styles() -> None:
             .la-global-header { flex-direction:column; gap:var(--la-space-3); }
             .la-header-meta { width:100%; justify-content:flex-start; }
             .la-brand-subtitle { max-width:16rem; overflow-wrap:anywhere; }
-            .la-page-header { padding:var(--la-space-4); gap:var(--la-space-3); }
-            .la-page-header__icon { flex-basis:2.4rem; width:2.4rem; height:2.4rem; }
             .la-notice { padding:var(--la-space-3); }
             .la-workspace-header { flex-direction:column; gap:var(--la-space-3); }
+            .la-workspace-header__lead { gap:var(--la-space-3); }
+            .la-workspace-header__icon { flex-basis:2.4rem; width:2.4rem; height:2.4rem; }
             .la-workspace-header__step { white-space:normal; }
             .la-analysis-summary { padding:var(--la-space-4); }
             .la-analysis-summary__topline { align-items:flex-start; flex-direction:column; }
             .la-analysis-summary p { font-size:.92rem; }
             .la-analysis-summary__intent { flex-direction:column; gap:var(--la-space-1); }
             .la-analysis-date-grid { grid-template-columns:1fr; }
-            .la-workflow-nav { padding:var(--la-space-2); }
-            .la-workflow-nav ol { grid-template-columns:1fr; }
-            .la-workflow-nav__item { grid-template-columns:1rem minmax(0,1fr); padding:var(--la-space-2); }
-            .la-workflow-nav__item small { display:none; }
+            .la-workflow-nav { display:none; }
             .la-workspace-empty-state { min-height:15rem; padding:var(--la-space-5) var(--la-space-4); }
             .la-explore-card,
             [class*="st-key-explore__open__"] > button {

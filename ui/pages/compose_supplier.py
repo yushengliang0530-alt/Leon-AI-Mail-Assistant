@@ -70,7 +70,7 @@ def _workflow_steps(step: int) -> tuple[WorkflowStep, ...]:
             item.key,
             item.label,
             item.helper,
-            "current" if index == step else "done" if index < step else "upcoming",
+            "current" if index == step else "complete" if index < step else "upcoming",
         )
         for index, item in enumerate(CREATE_WORKFLOW_STEPS, start=1)
     )
@@ -237,7 +237,7 @@ def _render_step_two(
 
         back_label = "取消修改" if editing else "← 上一步"
         next_label = "保存修改" if editing else (
-            "进入确认" if question_index + 1 == total else "继续 →"
+            "确认邮件信息" if question_index + 1 == total else "保存并继续 →"
         )
         back_clicked, next_clicked = render_guided_action_bar(
             back_label=back_label,
@@ -648,6 +648,7 @@ def render_create_workspace(
         steps=_workflow_steps(step),
         render_task=render_task,
         on_return_home=return_to_home,
+        icon="edit_note",
     )
 
 

@@ -66,7 +66,8 @@ class HomeTaskCardTests(unittest.TestCase):
         self.assertIn("选择任务，Leon AI会一步步帮助你完成。", source)
         self.assertIn("核心任务", source)
         self.assertIn("CORE TASKS", source)
-        self.assertIn("继续处理", source)
+        self.assertIn("常用任务", source)
+        self.assertIn("EVERYDAY TASKS", source)
         self.assertIn("探索更多工作流 · Explore More", source)
 
     def test_explore_catalog_only_exposes_supplier_as_available(self) -> None:
@@ -120,6 +121,18 @@ class HomeTaskCardTests(unittest.TestCase):
         self.assertIn('@media (max-width: 768px)', source)
         self.assertIn("flex-direction:column", compact)
         self.assertIn("overflow-x:clip", compact)
+
+    def test_workspace_headers_share_icons_and_mobile_stepper_is_compact(self) -> None:
+        source = inspect.getsource(components)
+        style_source = inspect.getsource(styles)
+        self.assertIn("_HEADER_ICON_PATHS", source)
+        self.assertIn("la-workspace-header__icon", source)
+        self.assertIn("icon: str = \"spark\"", source)
+        self.assertIn(".la-workflow-nav { display:none; }", style_source)
+
+    def test_create_completed_steps_use_the_shared_complete_state(self) -> None:
+        states = [step.state for step in compose_supplier._workflow_steps(3)]
+        self.assertEqual(states, ["complete", "complete", "current", "upcoming"])
 
     def test_improve_comparison_uses_shared_panels_and_mobile_safe_styles(self) -> None:
         page_source = inspect.getsource(improve)

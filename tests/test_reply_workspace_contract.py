@@ -86,10 +86,8 @@ class ReplyWorkspaceContractTests(unittest.TestCase):
         )
         styles_source = re.sub(r"\s+", " ", inspect.getsource(styles))
         self.assertIn("render_workspace_shell(", reply_source)
-        self.assertIn(
-            ".st-key-workspace__reply.la-workflow-nav{display:none}",
-            re.sub(r"\s+", "", reply_source),
-        )
+        self.assertNotIn('primary_key="reply__return_home"', reply_source)
+        self.assertIn(".la-workflow-nav { display:none; }", styles_source)
         self.assertIn("@media (max-width: 768px)", styles_source)
         self.assertIn("flex-direction:column", styles_source)
         self.assertIn("overflow-x:clip", styles_source)

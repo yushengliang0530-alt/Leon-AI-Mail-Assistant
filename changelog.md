@@ -1,5 +1,23 @@
 # Changelog
 
+## V2.1 — 2026-08-18
+
+### Changed
+
+- Introduced the Leon AI Copilot / Business Communication Copilot product identity
+- Added workspace-first navigation for Reply, Create and Improve workflows
+- Redesigned Reply, Create and Improve as consistent enterprise task workspaces
+- Unified the design system for headers, workflow navigation, action hierarchy, cards, loading, empty and status states
+- Simplified task flows and refined Chinese-first UI copy
+- Improved desktop, tablet and mobile workspace responsiveness
+
+### Quality
+
+- Standardized completed/current/future workflow states across workspaces
+- Removed the unused Improve Workspace placeholder page and duplicate Reply return action
+- Preserved all DeepSeek, Prompt, risk, Coverage and Preflight business behaviour
+- Extended UI regression coverage with mocked AI services
+
 ## V2.0 — 2026-07-31
 
 ### Added

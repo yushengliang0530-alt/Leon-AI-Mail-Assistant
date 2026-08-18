@@ -47,7 +47,7 @@ class StreamlitAppTests(unittest.TestCase):
         self.assertIn("Leon AI", rendered)
         self.assertIn("Leon AI Copilot", rendered)
         self.assertIn("Business Communication Copilot", rendered)
-        self.assertIn("V2.1 Development", rendered)
+        self.assertIn("V2.1", rendered)
         self.assertNotIn("开发中", rendered)
         self.assertNotIn("Phase", rendered)
         self.assertIn("今天需要完成什么商务沟通？", rendered)
@@ -202,7 +202,7 @@ class StreamlitAppTests(unittest.TestCase):
         rendered = "\n".join(item.value for item in app.markdown)
         self.assertIn("回复收到的邮件", rendered)
         self.assertIn("Reply Email Workspace", rendered)
-        self.assertIn("Analyze incoming emails and create professional business replies.", rendered)
+        self.assertIn("分析来信、确认立场并生成专业商务回复。", rendered)
         for label in ("Email", "Analysis", "Decision", "Generate", "Check"):
             self.assertIn(label, rendered)
         self.assertIsNotNone(

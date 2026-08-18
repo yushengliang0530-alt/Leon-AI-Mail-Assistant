@@ -1,9 +1,11 @@
 # Roadmap
 
-## Current — V2.0 AI商务邮件工作台
+## Current — V2.1 Leon AI Copilot
 
-- V2.0 正式版已完成
-- 上线 AI Business Email Workspace 正式首页
+- V2.1 Copilot Workspace Experience Upgrade 已完成，待人工验收与正式发布
+- 上线 Business Communication Copilot 工作台首页
+- 完成 Reply、Create 和 Improve 独立 Workspace 体验
+- 统一 Header、Workflow Navigation、Action Bar、Loading、Empty 和 Status 组件
 - 完成催供应商 Guided Workflow
 - 完成 Incoming Email Analysis
 - 完成 Reply Decision、Reply Generation 和 Coverage Check
@@ -22,6 +24,7 @@
 - Beta 0.9：邀请测试版上线
 - V1.0：商务沟通优化、风险提示和本地化建议
 - V2.0：场景化供应商邮件、智能回复和发送前检查
+- V2.1：Copilot Workspace Experience Upgrade
 
 ## Later / Future
 

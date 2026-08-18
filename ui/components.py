@@ -134,13 +134,8 @@ class PreflightPresentationItem:
     kind: str
 
 
-def render_global_header(
-    *,
-    version: str,
-    service_status: str,
-    show_guide: bool = True,
-) -> None:
-    guide = '<span>使用指南</span>' if show_guide else ""
+def render_global_header(*, version: str, service_status: str) -> None:
+    """Render the compact product header shared by every V2.1 page."""
     st.markdown(
         f"""
         <div class="la-global-header">
@@ -152,7 +147,6 @@ def render_global_header(
             </div>
           </div>
           <div class="la-header-meta" aria-label="工作台状态">
-            {guide}
             <span>服务：{html.escape(service_status)}</span>
             <span>{html.escape(version)}</span>
           </div>
@@ -169,18 +163,12 @@ def render_page_header(
     description: str,
     eyebrow: str = "LEON AI · WORKSPACE",
 ) -> None:
-    st.markdown(
-        f"""
-        <div class="la-page-header">
-          <div class="la-page-header__icon" aria-hidden="true">{html.escape(icon)}</div>
-          <div>
-            <div class="la-page-header__eyebrow">{html.escape(eyebrow)}</div>
-            <h1>{html.escape(title)}</h1>
-            <p>{html.escape(description)}</p>
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    """Render a non-workflow header with the same visual grammar as workspaces."""
+    render_workspace_header(
+        title=title,
+        description=description,
+        eyebrow=eyebrow,
+        icon=icon,
     )
 
 
@@ -190,6 +178,7 @@ def render_workspace_header(
     description: str,
     eyebrow: str,
     step_label: str = "",
+    icon: str = "spark",
 ) -> None:
     """Render the neutral task header shared by future workspace migrations."""
     step_html = (
@@ -200,15 +189,38 @@ def render_workspace_header(
     st.markdown(
         f"""
         <section class="la-workspace-header">
-          <div>
-            <div class="la-workspace-header__eyebrow">{html.escape(eyebrow)}</div>
-            <h1>{html.escape(title)}</h1>
-            <p>{html.escape(description)}</p>
+          <div class="la-workspace-header__lead">
+            {_header_icon(icon)}
+            <div>
+              <div class="la-workspace-header__eyebrow">{html.escape(eyebrow)}</div>
+              <h1>{html.escape(title)}</h1>
+              <p>{html.escape(description)}</p>
+            </div>
           </div>
           {step_html}
         </section>
         """,
         unsafe_allow_html=True,
+    )
+
+
+_HEADER_ICON_PATHS = {
+    "reply": "M4 4h16v12H7l-3 3V4Zm2 2v8.17L6.17 14H18V6H6Zm3 2h6v2H9V8Zm0 3h4v2H9v-2Z",
+    "edit_note": "M4 4h10v2H4V4Zm0 4h10v2H4V8Zm0 4h6v2H4v-2Zm12.12-1.88 1.41 1.41-5.3 5.3H10.8v-1.41l5.32-5.3ZM17.53 8.7l1.06-1.06a1 1 0 0 1 1.41 0l.71.71a1 1 0 0 1 0 1.41l-1.06 1.06-2.12-2.12Z",
+    "polish": "m12 2 1.72 5.28L19 9l-5.28 1.72L12 16l-1.72-5.28L5 9l5.28-1.72L12 2Zm6 12 .86 2.64L21.5 17.5l-2.64.86L18 21l-.86-2.64-2.64-.86 2.64-.86L18 14ZM5 14l.86 2.64 2.64.86-2.64.86L5 21l-.86-2.64-2.64-.86 2.64-.86L5 14Z",
+    "grid_view": "M4 4h6v6H4V4Zm10 0h6v6h-6V4ZM4 14h6v6H4v-6Zm10 0h6v6h-6v-6Z",
+    "local_shipping": "M3 5h11v10h2.5l2-3V9h-4.5V5H3v10h1a2.5 2.5 0 0 0 5 0h6a2.5 2.5 0 0 0 5 0h1v-5l-3-4h-4V5H3Zm3.5 12A1.5 1.5 0 1 1 6.5 14a1.5 1.5 0 0 1 0 3Zm11 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z",
+    "spark": "m12 2 1.65 5.35L19 9l-5.35 1.65L12 16l-1.65-5.35L5 9l5.35-1.65L12 2Z",
+}
+
+
+def _header_icon(name: str) -> str:
+    path = _HEADER_ICON_PATHS.get(name, _HEADER_ICON_PATHS["spark"])
+    return (
+        '<span class="la-workspace-header__icon" aria-hidden="true">'
+        '<svg viewBox="0 0 24 24" fill="currentColor">'
+        f'<path d="{path}" />'
+        '</svg></span>'
     )
 
 
@@ -243,13 +255,13 @@ def render_workspace_shell(
     steps: tuple[WorkflowStep, ...],
     render_task: Callable[[], None],
     on_return_home: Callable[[], None],
+    icon: str = "spark",
 ) -> None:
     """Render a complete presentation shell around one supplied task canvas."""
     with st.container(key=f"workspace__{workspace_key}"):
         render_global_header(
             version=version,
             service_status=service_status,
-            show_guide=False,
         )
         st.button(
             "← 返回工作台",
@@ -262,6 +274,7 @@ def render_workspace_shell(
             description=description,
             eyebrow=eyebrow,
             step_label=_current_step_label(steps),
+            icon=icon,
         )
         navigation, canvas = st.columns((0.28, 0.72), gap="large")
         with navigation:
@@ -496,6 +509,7 @@ def render_empty_state(title: str, helper: str) -> None:
     st.markdown(
         f"""
         <section class="la-empty-state">
+          <span class="la-empty-state__icon" aria-hidden="true">·</span>
           <strong>{html.escape(title)}</strong>
           <span>{html.escape(helper)}</span>
         </section>
@@ -508,6 +522,7 @@ def render_loading_state(title: str, helper: str) -> None:
     st.markdown(
         f"""
         <section class="la-loading-state" aria-live="polite">
+          <span class="la-loading-state__icon" aria-hidden="true">···</span>
           <strong>{html.escape(title)}</strong>
           <span>{html.escape(helper)}</span>
         </section>

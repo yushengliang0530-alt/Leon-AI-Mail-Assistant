@@ -56,7 +56,6 @@ def render_explore_more(
         render_global_header(
             version=APP_VERSION_LABEL,
             service_status=service_status,
-            show_guide=False,
         )
         st.button(
             "← 返回工作台",

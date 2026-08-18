@@ -1,4 +1,4 @@
-"""Minimal Phase 1A state for the V2.0 home prototype."""
+"""Navigation and workflow state for the Leon AI V2.1 workspace."""
 
 import streamlit as st
 

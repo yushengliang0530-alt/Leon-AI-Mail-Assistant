@@ -1,4 +1,4 @@
-"""Phase 3 reply workspace: analysis followed by local decision guidance."""
+"""Reply workspace: analysis followed by local decision guidance."""
 
 from collections.abc import Callable
 import hashlib
@@ -81,28 +81,6 @@ REPLY_WORKFLOW = (
     ("generate", "Generate", "Create the reply"),
     ("check", "Check", "Review before sending"),
 )
-
-
-def _inject_reply_content_styles() -> None:
-    st.markdown(
-        """
-        <style>
-        .st-key-workspace__reply .reply-card{padding:var(--la-space-4);
-          margin:var(--la-space-3) 0;border:1px solid var(--la-border);
-          border-radius:var(--la-radius-card);background:var(--la-surface);
-          box-shadow:var(--la-shadow-sm);}
-        .st-key-workspace__reply .reply-card h3{margin:0 0 var(--la-space-2);
-          color:var(--la-ink);font-size:.9rem;}
-        .st-key-workspace__reply .reply-card p,.st-key-workspace__reply
-          .reply-card li{color:var(--la-text);font-size:.82rem;line-height:1.6;}
-        .st-key-workspace__reply .reply-meta{color:var(--la-muted);font-size:.72rem;}
-        @media(max-width:640px){
-          .st-key-workspace__reply .la-workflow-nav{display:none}
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 def _reply_workflow_steps(step: int) -> tuple[WorkflowStep, ...]:
@@ -217,6 +195,10 @@ def _render_input(service: IncomingEmailAnalysisService) -> None:
         started = time.perf_counter()
         st.session_state["reply__request_status"] = "running"
         try:
+            render_loading_state(
+                "正在分析来信…",
+                "正在识别对方要求、关键日期和潜在风险。",
+            )
             with st.spinner("正在分析对方要求和待回复事项…"):
                 analysis = service.analyze(
                     original_subject=st.session_state["reply__original_subject"],
@@ -441,7 +423,6 @@ def render_reply_workspace(
     service_status: str = "已配置",
 ) -> None:
     """Adapt the existing Reply flow to the shared V2.1 workspace shell."""
-    _inject_reply_content_styles()
     step = int(st.session_state.get("reply__step", 1))
     analysis = st.session_state.get("reply__analysis")
     digest_valid = (
@@ -491,24 +472,17 @@ def render_reply_workspace(
         if render_privacy_notice:
             with st.expander("隐私与测试说明", expanded=False):
                 render_privacy_notice()
-        render_action_bar(
-            primary_label="返回首页",
-            primary_key="reply__return_home",
-            on_primary=return_to_home,
-        )
-
     render_workspace_shell(
         workspace_key="reply",
         version=APP_VERSION_LABEL,
         service_status=service_status,
-        title="Reply Email Workspace",
-        description=(
-            "Analyze incoming emails and create professional business replies."
-        ),
+        title="回复收到的邮件",
+        description="Reply Email Workspace · 分析来信、确认立场并生成专业商务回复。",
         eyebrow="LEON AI · 回复收到的邮件",
         steps=_reply_workflow_steps(step),
         render_task=render_task,
         on_return_home=return_to_home,
+        icon="reply",
     )
 
 
@@ -526,6 +500,10 @@ def _run_coverage(
     invalidate_preflight()
     started = time.perf_counter()
     try:
+        render_loading_state(
+            "正在检查回复完整性…",
+            "正在逐项核对已确认事项是否得到回应。",
+        )
         with st.spinner("正在独立检查回复覆盖情况…"):
             result = service.check_coverage(
                 items=items,
@@ -591,6 +569,10 @@ def _run_preflight(
     st.session_state["preflight__error"] = ""
     started = time.perf_counter()
     try:
+        render_loading_state(
+            "正在执行发送前检查…",
+            "正在检查行动要求、截止时间、附件提示与承诺风险。",
+        )
         with st.spinner("正在检查遗漏、语气和商务风险…"):
             report = service.inspect(
                 analysis=analysis,

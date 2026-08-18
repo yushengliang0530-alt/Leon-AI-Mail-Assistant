@@ -585,7 +585,7 @@ def copy_button(
             color:#263955;
             font:600 13px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
             cursor:pointer;
-            transition:all .18s ease;
+            transition:color .18s ease, border-color .18s ease, background-color .18s ease;
         ">
             <span>{safe_chinese_label}</span>
             <span style="margin-left:6px;color:#8a97a8;font-size:11px;font-weight:500">

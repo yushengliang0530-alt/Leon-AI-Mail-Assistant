@@ -238,7 +238,9 @@ def _render_draft_step() -> None:
     with left:
         clear_clicked = secondary_action_button("清空", key="improve__clear_draft")
     with right:
-        continue_clicked = primary_action_button("继续 →", key="improve__draft_continue")
+        continue_clicked = primary_action_button(
+            "选择优化重点 →", key="improve__draft_continue"
+        )
     if clear_clicked:
         _clear_draft()
         st.rerun()
@@ -481,4 +483,5 @@ def render_improve_workspace(*, settings: DeepSeekSettings, service_status: str)
         steps=_workflow_steps(step),
         render_task=render_task,
         on_return_home=return_to_home,
+        icon="polish",
     )
