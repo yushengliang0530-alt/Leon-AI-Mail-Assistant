@@ -1,94 +1,143 @@
-"""Editable reply result and visible Phase 3C coverage cards."""
+"""Editable reply result and coverage presentation for the Reply workspace."""
 
-import html
+from __future__ import annotations
+
+from collections.abc import Mapping
 
 import streamlit as st
+
+from ui.components import (
+    CoveragePresentationItem,
+    render_copy_button,
+    render_coverage_items,
+    render_coverage_summary,
+    render_email_editor,
+    render_email_subject_card,
+    render_notice_bar,
+    render_section_header,
+    secondary_action_button,
+    tertiary_action_button,
+)
 from ui.state import invalidate_preflight
 
 
-STATUS_META = {
-    "addressed": ("✓", "已回复", "#18724f"),
-    "partially_addressed": ("!", "部分回复", "#a56600"),
-    "postponed": ("◷", "已说明暂缓", "#2858c7"),
-    "not_addressed": ("×", "没有回复", "#b64040"),
+_COVERAGE_PRESENTATION = {
+    "addressed": ("已回复", "success"),
+    "partially_addressed": ("部分回复", "warning"),
+    "postponed": ("已说明暂缓", "info"),
+    "not_addressed": ("暂未回复", "warning"),
 }
 
 
 def invalidate_reply_coverage() -> None:
+    """Keep existing invalidation behaviour after a manual email edit."""
     st.session_state["reply__coverage_digest"] = ""
     st.session_state["reply__coverage_status"] = "stale"
     st.session_state["reply__coverage_error"] = ""
     invalidate_preflight()
 
 
-def render_reply_result() -> bool:
-    st.markdown("### 英文回复邮件")
-    st.caption("Reply Email · 可以在复制前直接修改。")
-    st.text_input(
-        "邮件主题 · Subject",
-        key="reply__subject",
-        on_change=invalidate_reply_coverage,
+def _persist_email_edits() -> None:
+    """Persist editable fields while the next workspace canvas is displayed."""
+    st.session_state["reply__presentation_subject"] = str(
+        st.session_state.get("reply__subject", "")
     )
-    st.text_area(
-        "邮件正文 · Body",
-        key="reply__body",
-        height=360,
-        on_change=invalidate_reply_coverage,
+    st.session_state["reply__presentation_body"] = str(
+        st.session_state.get("reply__body", "")
     )
-    st.caption("点击代码框右上角的复制图标，可复制对应内容。")
-    left, right = st.columns(2)
-    with left:
-        st.markdown("**复制主题 · Copy Subject**")
-        st.code(st.session_state.get("reply__subject", ""), language=None)
-    with right:
-        st.markdown("**复制正文 · Copy Body**")
-        st.code(st.session_state.get("reply__body", ""), language=None)
-    st.markdown("**复制完整邮件 · Copy Full Email**")
-    st.code(
-        f"Subject: {st.session_state.get('reply__subject', '')}\n\n"
-        f"{st.session_state.get('reply__body', '')}",
-        language=None,
+    invalidate_reply_coverage()
+
+
+def render_reply_result(*, item_titles: Mapping[str, str]) -> str | None:
+    """Render the email and its independent coverage result.
+
+    Presentation actions are returned to ``reply.py`` so the existing service
+    calls and workflow orchestration remain outside this UI adapter.
+    """
+    render_section_header("回复已生成", "GENERATED REPLY")
+    st.caption("邮件可直接编辑；编辑后会提示您重新检查完整性和发送前风险。")
+    subject = render_email_subject_card(
+        value_key="reply__subject", on_change=_persist_email_edits
+    )
+    body = render_email_editor(
+        value_key="reply__body", on_change=_persist_email_edits
+    )
+    render_copy_button(
+        label="复制完整邮件",
+        value=f"Subject: {subject}\n\n{body}",
+        key="reply__copy_full_email",
+        primary=True,
     )
 
+    render_section_header("回复完整性", "COVERAGE")
+    st.caption("此检查只判断是否回应了待处理事项，不会改写邮件。")
+    status = str(st.session_state.get("reply__coverage_status", "idle"))
     coverage = st.session_state.get("reply__coverage")
-    status = st.session_state.get("reply__coverage_status", "idle")
-    st.markdown("---")
-    st.markdown("### 回复覆盖检查")
-    st.caption("Coverage Check · 独立检查，不会修改邮件。")
     if status == "stale":
-        st.warning("邮件已修改，请重新检查回复覆盖情况。")
-    if st.session_state.get("reply__coverage_error"):
-        st.warning(st.session_state["reply__coverage_error"])
-    if coverage is not None and status != "stale":
-        st.markdown(
-            f"## 本次回复覆盖 {coverage.covered_count} / "
-            f"{coverage.total_count} 项"
+        render_notice_bar(
+            "邮件已修改",
+            "请重新检查回复完整性，再继续发送前检查。",
+            icon="!",
         )
-        if coverage.partial_count:
-            st.caption(f"部分回复：{coverage.partial_count} 项")
-        for item in coverage.items:
-            icon, label, color = STATUS_META[item.status]
-            st.markdown(
-                f"""
-                <div class="reply-card">
-                  <h3 style="color:{color}">{icon} {html.escape(label)}
-                    · {html.escape(item.item_id)}</h3>
-                  <p>{html.escape(item.note)}</p>
-                </div>
-                """,
-                unsafe_allow_html=True,
+    if st.session_state.get("reply__coverage_error"):
+        render_notice_bar(
+            "完整性检查暂不可用",
+            str(st.session_state["reply__coverage_error"]),
+            icon="!",
+        )
+    if coverage is not None and status != "stale":
+        render_coverage_summary(
+            covered_count=coverage.covered_count,
+            total_count=coverage.total_count,
+            partial_count=coverage.partial_count,
+            not_addressed_count=coverage.not_addressed_count,
+        )
+        presentation_items = tuple(
+            CoveragePresentationItem(
+                title=item_titles.get(item.item_id, "待处理事项"),
+                status=_COVERAGE_PRESENTATION.get(
+                    item.status, ("需要确认", "warning")
+                )[0],
+                note=item.note,
+                kind=_COVERAGE_PRESENTATION.get(
+                    item.status, ("需要确认", "warning")
+                )[1],
             )
+            for item in coverage.items
+        )
+        render_coverage_items(presentation_items)
         if coverage.not_addressed_count:
-            st.warning(
-                "仍有事项没有回复。可能是用户主动选择不回应，"
-                "发送前请再次确认。"
+            render_notice_bar(
+                "仍有事项暂未回复",
+                "这可能是您有意保留的处理方式；复制前请再次确认。",
+                icon="!",
             )
-    return st.button(
-        "重新检查覆盖 · Recheck Coverage",
+    elif status not in {"stale", "error"}:
+        render_notice_bar(
+            "正在准备完整性检查",
+            "生成完成后会独立核对每个已处理事项。",
+        )
+
+    if secondary_action_button(
+        "重新检查完整性",
         key="reply__recheck_coverage",
+        disabled=not (subject.strip() and body.strip()),
+    ):
+        return "recheck"
+    if secondary_action_button(
+        "重新生成回复",
+        key="reply__regenerate_reply",
+        disabled=not (subject.strip() and body.strip()),
+    ):
+        return "regenerate"
+    if tertiary_action_button("返回修改回复立场", key="reply__generation_back"):
+        return "back"
+    if st.button(
+        "进行发送前检查",
+        key="reply__continue_preflight",
+        type="primary",
         use_container_width=True,
-        disabled=not (
-            str(st.session_state.get("reply__subject", "")).strip()
-            and str(st.session_state.get("reply__body", "")).strip()
-        ),
-    )
+        disabled=not (subject.strip() and body.strip()),
+    ):
+        return "preflight"
+    return None

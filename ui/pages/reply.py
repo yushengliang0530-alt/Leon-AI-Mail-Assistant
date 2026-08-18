@@ -1,8 +1,7 @@
-"""Phase 3 reply workspace: analysis followed by local decision guidance."""
+"""Reply workspace: analysis followed by local decision guidance."""
 
 from collections.abc import Callable
 import hashlib
-import html
 import json
 import time
 
@@ -27,6 +26,24 @@ from services.preflight_service import (
     preflight_source_digest,
     report_from_items,
 )
+from product_identity import APP_VERSION_LABEL
+from ui.components import (
+    AnalysisAction,
+    AnalysisDate,
+    AnalysisNotice,
+    WorkflowStep,
+    render_action_bar,
+    render_analysis_action_cards,
+    render_analysis_date_cards,
+    render_analysis_notices,
+    render_analysis_summary_panel,
+    render_empty_state,
+    render_loading_state,
+    render_section_header,
+    render_strategy_list,
+    tertiary_action_button,
+    render_workspace_shell,
+)
 from ui.pages.reply_decision import (
     render_reply_decisions,
     render_reply_summary,
@@ -38,76 +55,51 @@ from ui.state import (
     prepare_reply_reanalysis,
     invalidate_preflight,
     return_to_home,
+    return_to_reply_decisions,
     start_reply_decisions,
     sync_reply_source,
 )
 
 
-URGENCY_LABELS = {
-    "low": "低",
-    "normal": "正常",
-    "high": "高",
-    "urgent": "紧急",
+URGENCY_PRESENTATION = {
+    "low": ("低优先级", "info"),
+    "normal": ("正常优先级", "info"),
+    "high": ("高优先级", "warning"),
+    "urgent": ("紧急", "risk"),
 }
-RISK_LABELS = {"low": "低", "medium": "中", "high": "高"}
+RISK_PRESENTATION = {
+    "low": ("提示", "info"),
+    "medium": ("需要确认", "warning"),
+    "high": ("需要留意", "risk"),
+}
 
 
-def _inject_styles() -> None:
-    st.markdown(
-        """
-        <style>
-        .st-key-reply__workspace {--reply-ink:#13223a;--reply-blue:#2858c7;
-          --reply-line:#d9e1ec;--reply-muted:#66758a;}
-        .st-key-reply__workspace .reply-header{display:flex;justify-content:
-          space-between;gap:1rem;align-items:flex-start;margin:1.2rem 0 1.35rem;}
-        .st-key-reply__workspace .reply-kicker{color:var(--reply-blue);
-          font-size:.7rem;font-weight:760;letter-spacing:.11em;}
-        .st-key-reply__workspace h1{margin:.35rem 0 .25rem;color:var(--reply-ink);
-          font-size:2rem;letter-spacing:-.035em;}
-        .st-key-reply__workspace .reply-sub{color:var(--reply-muted);
-          font-size:.88rem;line-height:1.6;}
-        .st-key-reply__workspace .reply-task{padding:.4rem .7rem;border:1px
-          solid #c7d3e6;border-radius:999px;background:#f8faff;color:#425978;
-          font-size:.72rem;font-weight:700;white-space:nowrap;}
-        .st-key-reply__workspace .reply-progress{display:grid;
-          grid-template-columns:repeat(5,1fr);gap:.4rem;margin-bottom:1.35rem;}
-        .st-key-reply__workspace .reply-progress span{padding:.62rem .75rem;
-          border-bottom:2px solid var(--reply-line);color:#8995a5;font-size:.76rem;}
-        .st-key-reply__workspace .reply-progress .active{border-color:
-          var(--reply-blue);color:var(--reply-blue);font-weight:750;}
-        .st-key-reply__workspace .reply-card{padding:1rem 1.05rem;margin:.7rem 0;
-          border:1px solid var(--reply-line);border-radius:.85rem;background:#fff;
-          box-shadow:0 7px 24px rgba(28,48,79,.04);}
-        .st-key-reply__workspace .reply-card h3{margin:0 0 .5rem;color:
-          var(--reply-ink);font-size:.9rem;}
-        .st-key-reply__workspace .reply-card p,.st-key-reply__workspace
-          .reply-card li{color:#4e6079;font-size:.82rem;line-height:1.6;}
-        .st-key-reply__workspace .reply-meta{color:#8794a6;font-size:.72rem;}
-        @media(max-width:640px){.st-key-reply__workspace .reply-header{
-          flex-direction:column}.st-key-reply__workspace h1{font-size:1.7rem}
-          .st-key-reply__workspace div[data-testid="stHorizontalBlock"]{
-          flex-direction:column}.st-key-reply__workspace div[data-testid="column"]{
-          width:100%!important;flex:1 1 100%!important}
-          .st-key-reply__workspace .reply-progress span{font-size:.64rem;
-          padding:.48rem .25rem}}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+REPLY_WORKFLOW = (
+    ("email", "来信邮件", "Incoming Email"),
+    ("analysis", "邮件分析", "Analysis"),
+    ("decision", "确认立场", "Decision"),
+    ("generate", "生成回复", "Generate"),
+    ("check", "发送前检查", "Check"),
+)
 
 
-def _progress(step: int) -> None:
-    st.markdown(
-        f"""
-        <div class="reply-progress">
-          <span class="{'active' if step == 1 else ''}">01　分析来信</span>
-          <span class="{'active' if step == 2 else ''}">02　查看分析</span>
-          <span class="{'active' if step == 3 else ''}">03　确认立场</span>
-          <span class="{'active' if step == 4 else ''}">04　生成回复</span>
-          <span class="{'active' if step == 5 else ''}">05　发送前检查</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
+def _reply_workflow_steps(step: int) -> tuple[WorkflowStep, ...]:
+    """Project Reply state onto the shared display-only workflow navigation."""
+    current_step = max(1, min(len(REPLY_WORKFLOW), step))
+    return tuple(
+        WorkflowStep(
+            key=key,
+            label=label,
+            helper=helper,
+            state=(
+                "complete"
+                if index < current_step
+                else "current"
+                if index == current_step
+                else "upcoming"
+            ),
+        )
+        for index, (key, label, helper) in enumerate(REPLY_WORKFLOW, start=1)
     )
 
 
@@ -203,6 +195,10 @@ def _render_input(service: IncomingEmailAnalysisService) -> None:
         started = time.perf_counter()
         st.session_state["reply__request_status"] = "running"
         try:
+            render_loading_state(
+                "正在分析来信…",
+                "正在识别对方要求、关键日期和潜在风险。",
+            )
             with st.spinner("正在分析对方要求和待回复事项…"):
                 analysis = service.analyze(
                     original_subject=st.session_state["reply__original_subject"],
@@ -233,77 +229,131 @@ def _render_input(service: IncomingEmailAnalysisService) -> None:
             st.rerun()
 
 
-def _list_card(title: str, items: list[str], empty: str) -> None:
-    body = (
-        "<ol>" + "".join(f"<li>{html.escape(item)}</li>" for item in items) + "</ol>"
-        if items
-        else f"<p>{html.escape(empty)}</p>"
-    )
-    st.markdown(
-        f'<div class="reply-card"><h3>{html.escape(title)}</h3>{body}</div>',
-        unsafe_allow_html=True,
-    )
-
-
 def _render_result(analysis: IncomingEmailAnalysis) -> None:
-    st.markdown("### 来信分析结果")
-    st.caption("Analysis Ready · 以下内容用于帮助理解来信，尚未生成回复邮件。")
-    for title, value in (
-        ("邮件摘要", analysis.summary),
-        ("对方意图", analysis.sender_intent),
-    ):
-        st.markdown(
-            f'<div class="reply-card"><h3>{title}</h3><p>'
-            f"{html.escape(value)}</p></div>",
-            unsafe_allow_html=True,
+    urgency_label, urgency_kind = URGENCY_PRESENTATION.get(
+        analysis.urgency,
+        ("正常优先级", "info"),
+    )
+    render_analysis_summary_panel(
+        summary=analysis.summary,
+        sender_intent=analysis.sender_intent,
+        urgency_label=urgency_label,
+        urgency_kind=urgency_kind,
+    )
+
+    requests_by_id = {
+        request.item_id: request.description
+        for request in analysis.sender_requests
+    }
+    questions = tuple(
+        AnalysisAction(
+            title=question.question,
+            deadline=question.deadline,
+            required=question.required,
+            uncertain=question.uncertain,
+            related_context=requests_by_id.get(question.related_request_id or ""),
         )
-    _list_card(
-        "对方要求",
-        [
-            item.description
-            + (f"｜截止：{item.deadline}" if item.deadline else "")
-            + ("｜信息待确认" if item.uncertain else "")
-            for item in analysis.sender_requests
-        ],
-        "未识别到明确行动要求。",
+        for question in analysis.questions_requiring_reply
     )
-    _list_card(
-        "必须回复的问题",
-        [
-            item.question
-            + (f"｜截止：{item.deadline}" if item.deadline else "")
-            + ("｜信息待确认" if item.uncertain else "")
-            for item in analysis.questions_requiring_reply
-        ],
-        "未识别到必须回复的问题。",
+    requests = tuple(
+        AnalysisAction(
+            title=request.description,
+            deadline=request.deadline,
+            required=request.needs_response,
+            uncertain=request.uncertain,
+        )
+        for request in analysis.sender_requests
     )
-    facts = [
-        f"{item.value}：{item.meaning}"
-        + ("（待确认）" if item.uncertain else "")
-        for item in (*analysis.key_dates, *analysis.key_numbers)
-    ]
-    _list_card("关键日期与数字", facts, "邮件中没有明确的关键日期或数字。")
-    risk_items = [
-        f"{RISK_LABELS[item.level]}｜{item.description} 建议：{item.suggestion}"
-        for item in analysis.risks
-    ]
-    _list_card(
-        f"风险和紧急程度 · {URGENCY_LABELS[analysis.urgency]}",
-        risk_items,
-        "未识别到明确风险，但仍建议人工核对。",
+    dates = tuple(
+        AnalysisDate(
+            value=item.value,
+            meaning=item.meaning,
+            uncertain=item.uncertain,
+        )
+        for item in analysis.key_dates
     )
-    _list_card("建议回复策略", list(analysis.reply_strategy), "暂无额外策略建议。")
-    _list_card(
-        "AI建议回复事项",
-        [
-            item.description
-            + (f"｜原因：{item.reason}" if item.reason else "")
-            + ("｜信息待确认" if item.uncertain else "")
-            for item in analysis.recommended_reply_items
-        ],
-        "未识别到额外建议回复事项。",
+    risk_notices = tuple(
+        AnalysisNotice(
+            title=(
+                f"{RISK_PRESENTATION.get(risk.level, ('提示', 'info'))[0]}"
+                f" · {risk.category}"
+            ),
+            body=(
+                f"{risk.description} 建议：{risk.suggestion}"
+                if risk.suggestion
+                else risk.description
+            ),
+            kind=RISK_PRESENTATION.get(risk.level, ("提示", "info"))[1],
+        )
+        for risk in analysis.risks
     )
-    _list_card("不确定事项", list(analysis.uncertainties), "未标记不确定事项。")
+
+    primary, supporting = st.columns((1.35, 0.85), gap="large")
+    with primary:
+        render_section_header("需要逐项回复", "QUESTIONS")
+        if questions:
+            render_analysis_action_cards(questions, variant="question")
+        else:
+            render_empty_state(
+                "未识别到明确需要逐项回复的问题",
+                "系统仍会在下方整理对方要求，并可帮助您继续回复。",
+            )
+
+        render_section_header("对方要求", "REQUESTS")
+        if requests:
+            render_analysis_action_cards(requests, variant="request")
+        else:
+            render_empty_state(
+                "未识别到明确行动要求",
+                "请结合原邮件内容人工确认下一步。",
+            )
+
+    with supporting:
+        render_section_header("关键日期", "KEY DATES")
+        if dates:
+            render_analysis_date_cards(dates)
+        else:
+            render_empty_state(
+                "未识别到明确日期要求",
+                "邮件中没有可确认的截止时间或计划日期。",
+            )
+
+        render_section_header("需要留意", "CHECK")
+        if risk_notices:
+            render_analysis_notices(risk_notices)
+        else:
+            render_analysis_notices(
+                (
+                    AnalysisNotice(
+                        title="暂无明确风险",
+                        body="仍建议在发送回复前核对承诺、日期和责任。",
+                        kind="info",
+                    ),
+                )
+            )
+
+        render_section_header("建议回复思路", "STRATEGY")
+        if analysis.reply_strategy:
+            render_strategy_list(tuple(analysis.reply_strategy))
+        else:
+            render_empty_state(
+                "暂无额外策略建议",
+                "可先确认已收到，再区分已确认与待核实事项。",
+            )
+
+        if analysis.key_numbers or analysis.uncertainties:
+            with st.expander("更多关键信息", expanded=False):
+                if analysis.key_numbers:
+                    st.caption("关键数字")
+                    for item in analysis.key_numbers:
+                        st.markdown(
+                            f"- **{item.value}**：{item.meaning}"
+                            + ("（待确认）" if item.uncertain else "")
+                        )
+                if analysis.uncertainties:
+                    st.caption("不确定事项")
+                    for item in analysis.uncertainties:
+                        st.markdown(f"- {item}")
 
     duration = st.session_state.get("reply__duration")
     tokens = st.session_state.get("reply__tokens")
@@ -316,68 +366,50 @@ def _render_result(analysis: IncomingEmailAnalysis) -> None:
         st.caption(" · ".join(meta))
     items = normalize_reply_items(analysis)
     if items:
-        st.info(
-            f"已整理出 {len(items)} 个待处理事项。下一步将逐项确认您的回复立场，"
-            "不会在本阶段生成邮件。"
+        render_analysis_notices(
+            (
+                AnalysisNotice(
+                    title="下一步",
+                    body=(
+                        f"已整理出 {len(items)} 个待处理事项。"
+                        "确认立场后，Leon AI 才会生成回复。"
+                    ),
+                    kind="info",
+                ),
+            )
         )
-        if st.button(
-            "开始逐项确认",
-            key="reply__start_decisions",
-            type="primary",
-            use_container_width=True,
-            on_click=start_reply_decisions,
-            args=(items,),
-        ):
-            st.rerun()
+        render_action_bar(
+            primary_label="确认回复立场",
+            primary_key="reply__start_decisions",
+            on_primary=lambda: start_reply_decisions(items),
+            secondary_label="修改原邮件",
+            secondary_key="reply__modify",
+            on_secondary=prepare_reply_reanalysis,
+        )
     else:
-        st.warning(
-            "未检测到明确需要回复的问题。是否仍希望生成一封确认收到的回复？"
+        render_empty_state(
+            "未识别到明确需要逐项回复的问题",
+            "Leon AI 仍可以帮助您生成一封确认收到或回应状态更新的邮件。",
         )
-        choice = st.radio(
-            "请选择下一步",
-            ("是，生成确认收到的回复", "返回修改邮件"),
-            index=None,
-            key="reply__zero_item_choice",
+        render_action_bar(
+            primary_label="继续回复",
+            primary_key="reply__continue_with_acknowledgement",
+            on_primary=lambda: start_reply_decisions(
+                (build_acknowledgement_item(),)
+            ),
+            secondary_label="返回修改邮件",
+            secondary_key="reply__return_to_modify_from_zero",
+            on_secondary=prepare_reply_reanalysis,
         )
-        if choice == "是，生成确认收到的回复":
-            if st.button(
-                "继续逐项确认",
-                key="reply__continue_with_acknowledgement",
-                type="primary",
-                use_container_width=True,
-                on_click=start_reply_decisions,
-                args=((build_acknowledgement_item(),),),
-            ):
-                st.rerun()
-        elif choice == "返回修改邮件":
-            if st.button(
-                "返回修改邮件",
-                key="reply__return_to_modify_from_zero",
-                use_container_width=True,
-                on_click=prepare_reply_reanalysis,
-            ):
-                st.rerun()
-
-    left, middle, right = st.columns(3)
-    with left:
-        st.button(
-            "修改原邮件",
-            key="reply__modify",
-            use_container_width=True,
-            on_click=prepare_reply_reanalysis,
-        )
-    with middle:
-        st.button(
-            "重新分析",
-            key="reply__reanalyze",
-            use_container_width=True,
-            on_click=prepare_reply_reanalysis,
-        )
-    with right:
-        st.button(
+    tertiary_action_button(
+        "重新分析",
+        key="reply__reanalyze",
+        on_click=prepare_reply_reanalysis,
+    )
+    with st.expander("更多操作", expanded=False):
+        tertiary_action_button(
             "清空当前分析",
             key="reply__clear",
-            use_container_width=True,
             on_click=clear_reply_state,
         )
 
@@ -388,55 +420,70 @@ def render_reply_workspace(
     generation_service: ReplyGenerationService,
     preflight_service: PreflightService,
     render_privacy_notice: Callable[[], None] | None = None,
+    service_status: str = "已配置",
 ) -> None:
-    _inject_styles()
+    """Adapt the existing Reply flow to the shared V2.1 workspace shell."""
     step = int(st.session_state.get("reply__step", 1))
-    with st.container(key="reply__workspace"):
-        st.button(
-            "← 返回工作台",
-            key="reply__return_home",
-            on_click=return_to_home,
-        )
-        st.markdown(
-            f"""
-            <div class="reply-header">
-              <div>
-                <div class="reply-kicker">LEON AI · REPLY WORKSPACE</div>
-                <h1>回复收到的邮件</h1>
-                <div class="reply-sub">Reply Workspace<br>
-                  先理解来信，再逐项确认您的处理立场。</div>
-              </div>
-              <div class="reply-task">回复收到的邮件 · {step}/5</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        _progress(step)
-        analysis = st.session_state.get("reply__analysis")
-        digest_valid = (
-            analysis is not None
-            and st.session_state.get("reply__analysis_digest")
-            == st.session_state.get("reply__source_digest")
-        )
+    analysis = st.session_state.get("reply__analysis")
+    digest_valid = (
+        analysis is not None
+        and st.session_state.get("reply__analysis_digest")
+        == st.session_state.get("reply__source_digest")
+    )
+    if not digest_valid:
+        st.session_state["reply__step"] = 1
+        step = 1
+
+    def render_task() -> None:
         items = tuple(st.session_state.get("reply__normalized_items", ()))
         if not digest_valid:
-            st.session_state["reply__step"] = 1
             _render_input(analysis_service)
         elif step == 3 and st.session_state.get("reply__decision_summary") is None:
             render_reply_decisions(items)
         elif step == 3:
             if render_reply_summary(items):
                 _generate_and_check(generation_service, analysis, items)
-        elif step in (4, 5):
-            if render_reply_result():
+        elif step == 4:
+            item_titles = {item.item_id: item.description for item in items}
+            action = render_reply_result(item_titles=item_titles)
+            if action == "recheck":
                 _run_coverage(generation_service, items)
-            if step == 5 and render_preflight_panel():
+            elif action == "regenerate":
+                _generate_and_check(generation_service, analysis, items)
+            elif action == "back":
+                return_to_reply_decisions()
+                st.rerun()
+            elif action == "preflight":
+                st.session_state["reply__step"] = 5
+                st.rerun()
+        elif step == 5:
+            # Streamlit clears widgets that are absent from the Check canvas.
+            # These snapshots preserve only the user-edited presentation values.
+            st.session_state["reply__subject"] = str(
+                st.session_state.get("reply__presentation_subject", "")
+            )
+            st.session_state["reply__body"] = str(
+                st.session_state.get("reply__presentation_body", "")
+            )
+            if render_preflight_panel():
                 _run_preflight(preflight_service, analysis)
         else:
             _render_result(analysis)
         if render_privacy_notice:
             with st.expander("隐私与测试说明", expanded=False):
                 render_privacy_notice()
+    render_workspace_shell(
+        workspace_key="reply",
+        version=APP_VERSION_LABEL,
+        service_status=service_status,
+        title="回复收到的邮件",
+        description="Reply Email Workspace · 分析来信、确认立场并生成专业商务回复。",
+        eyebrow="LEON AI · 回复收到的邮件",
+        steps=_reply_workflow_steps(step),
+        render_task=render_task,
+        on_return_home=return_to_home,
+        icon="reply",
+    )
 
 
 def _email_digest(subject: str, body: str) -> str:
@@ -453,6 +500,10 @@ def _run_coverage(
     invalidate_preflight()
     started = time.perf_counter()
     try:
+        render_loading_state(
+            "正在检查回复完整性…",
+            "正在逐项核对已确认事项是否得到回应。",
+        )
         with st.spinner("正在独立检查回复覆盖情况…"):
             result = service.check_coverage(
                 items=items,
@@ -480,7 +531,7 @@ def _run_coverage(
         st.session_state["reply__coverage_error"] = (
             "覆盖检查暂时不可用，请重新检查。"
         )
-    st.session_state["reply__step"] = 5
+    st.session_state["reply__step"] = 4
     st.rerun()
 
 
@@ -518,6 +569,10 @@ def _run_preflight(
     st.session_state["preflight__error"] = ""
     started = time.perf_counter()
     try:
+        render_loading_state(
+            "正在执行发送前检查…",
+            "正在检查行动要求、截止时间、附件提示与承诺风险。",
+        )
         with st.spinner("正在检查遗漏、语气和商务风险…"):
             report = service.inspect(
                 analysis=analysis,
@@ -578,6 +633,10 @@ def _generate_and_check(
         ),
     )
     try:
+        render_loading_state(
+            "正在生成商务回复…",
+            "正在整理已确认立场，准备清晰、专业的英文回复。",
+        )
         with st.spinner("正在根据已确认立场生成英文回复…"):
             result = service.generate(
                 analysis=analysis,
@@ -594,6 +653,8 @@ def _generate_and_check(
         st.session_state["reply__generated_email"] = result
         st.session_state["reply__subject"] = result.subject
         st.session_state["reply__body"] = result.body
+        st.session_state["reply__presentation_subject"] = result.subject
+        st.session_state["reply__presentation_body"] = result.body
         st.session_state["reply__generation_status"] = "success"
         st.session_state["reply__generation_duration"] = (
             time.perf_counter() - started

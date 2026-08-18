@@ -46,6 +46,57 @@ class UIStateImportContractTests(unittest.TestCase):
             self.assertIn(function_name, state.__all__)
             self.assertTrue(callable(getattr(state, function_name, None)))
 
+    def test_workspace_navigation_uses_only_system_namespace(self) -> None:
+        session = {
+            **state.COMPOSE_DEFAULTS,
+            **state.REPLY_DEFAULTS,
+            **state.PREFLIGHT_DEFAULTS,
+            state.HOME_VIEW_KEY: "home",
+            state.HOME_ACTION_KEY: None,
+            state.ACTIVE_PAGE_KEY: state.HOME_PAGE,
+            state.WORKSPACE_KEY: "",
+            state.NAVIGATION_HISTORY_KEY: (),
+        }
+        with patch.object(state.st, "session_state", session):
+            state.open_create_workspace()
+            self.assertEqual(session[state.ACTIVE_PAGE_KEY], state.CREATE_PAGE)
+            self.assertEqual(session[state.WORKSPACE_KEY], "create")
+            self.assertEqual(session["compose__task_id"], "")
+            self.assertEqual(session["reply__step"], 1)
+
+            state.open_explore_more()
+            self.assertEqual(session[state.ACTIVE_PAGE_KEY], state.EXPLORE_PAGE)
+            self.assertEqual(session[state.WORKSPACE_KEY], "explore")
+            self.assertEqual(
+                session[state.NAVIGATION_HISTORY_KEY],
+                (state.HOME_PAGE, state.CREATE_PAGE),
+            )
+
+            state.return_to_home()
+            self.assertEqual(session[state.ACTIVE_PAGE_KEY], state.HOME_PAGE)
+            self.assertEqual(session[state.WORKSPACE_KEY], "")
+
+    def test_legacy_create_and_improve_routes_remain_compatible(self) -> None:
+        session = {
+            state.HOME_VIEW_KEY: "home",
+            state.HOME_ACTION_KEY: None,
+            state.ACTIVE_PAGE_KEY: state.HOME_PAGE,
+            state.WORKSPACE_KEY: "",
+            state.NAVIGATION_HISTORY_KEY: (),
+        }
+        with patch.object(state.st, "session_state", session):
+            state.open_legacy_create_editor()
+            self.assertEqual(
+                session[state.ACTIVE_PAGE_KEY], state.CREATE_EDITOR_PAGE
+            )
+            self.assertEqual(session["writing_mode"], "写英文邮件")
+            state.return_to_home()
+            state.open_legacy_improve()
+            self.assertEqual(
+                session[state.ACTIVE_PAGE_KEY], state.IMPROVE_EDITOR_PAGE
+            )
+            self.assertEqual(session["writing_mode"], "优化英文邮件")
+
     def test_preflight_state_is_independent_and_can_be_invalidated(self) -> None:
         session = {
             **state.REPLY_DEFAULTS,

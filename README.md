@@ -1,12 +1,12 @@
-# Leon AI — AI商务邮件工作台
+# Leon AI Copilot — AI商务沟通工作台
 
-**Business Email Workspace · V2.0 · 2026-07-31**
+**Business Communication Copilot · V2.1**
 
 帮助职场人士通过引导式工作流完成供应商跟进、来信回复、英文草稿优化和发送前检查。用户不需要准备复杂 Prompt，系统会根据已确认的事实生成可编辑、可人工审核的英文商务邮件。
 
 ## 产品定位
 
-Leon AI 面向中国职场人员、外贸人员和工程项目人员。V2.0 将开放式邮件输入升级为任务化工作流：系统主动询问必要事实、分析来信诉求、记录用户立场，并检查回复覆盖和发送风险。
+Leon AI 面向中国职场人员、外贸人员和工程项目人员。V2.1 以 Copilot Workspace 组织任务：系统主动询问必要事实、分析来信诉求、记录用户立场，并检查回复覆盖和发送风险。
 
 本工具不是法律、信息安全或管理审批系统。风险提示和 AI 输出均需人工确认。
 
@@ -25,12 +25,14 @@ Leon AI 面向中国职场人员、外贸人员和工程项目人员。V2.0 将�
 - AI 服务状态、耗时和可用 Token 用量
 - 可选访问码及 Streamlit Community Cloud 支持
 
-## V2.0 正式版
+## V2.1 Copilot Workspace Experience Upgrade
 
-- 首页只展示已经完成的正式工作流
-- 场景化信息收集取代大段 Prompt 输入
-- 回复流程从来信分析、立场确认一直覆盖到生成、Coverage 和 Preflight
-- AI 仅使用用户提供或确认的事实，不应擅自补充日期、金额、责任或承诺
+- New workspace navigation：从首页直接进入 Reply、Create 或 Improve Workspace
+- Redesigned Reply Workspace：来信分析、决策、生成、Coverage 与 Preflight 使用统一流程导航
+- Redesigned Create Workspace：场景选择、逐题引导、确认与结果使用同一工作台结构
+- Redesigned Improve Workspace：草稿、优化目标和 Before / After 结果对比分离展示
+- Unified enterprise design system：统一 Header、Step、Card、状态、加载、错误与响应式规则
+- Simplified task flows：移除不必要中间入口，明确每一步的唯一主操作
 - 自动化测试使用 Mock 后端，不产生真实 DeepSeek 费用
 
 ## 本地运行

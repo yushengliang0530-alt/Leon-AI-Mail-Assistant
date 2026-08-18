@@ -45,19 +45,154 @@ class StreamlitAppTests(unittest.TestCase):
         app = self.create_home()
         rendered = "\n".join(item.value for item in app.markdown)
         self.assertIn("Leon AI", rendered)
-        self.assertIn(APP_NAME_ZH, rendered)
-        self.assertIn(APP_NAME_EN, rendered)
-        self.assertIn("V2.0", rendered)
-        self.assertNotIn("DEVELOPMENT", rendered)
+        self.assertIn("Leon AI Copilot", rendered)
+        self.assertIn("Business Communication Copilot", rendered)
+        self.assertIn("V2.1", rendered)
         self.assertNotIn("开发中", rendered)
         self.assertNotIn("Phase", rendered)
-        self.assertIn("今天有什么商务沟通需要完成", rendered)
+        self.assertIn("今天需要完成什么商务沟通？", rendered)
         for action in (
             "reply",
-            "supplier",
+            "create",
             "improve",
         ):
             self.assertIsNotNone(app.button(key=f"home__action__{action}"))
+        self.assertIsNotNone(app.button(key="home__explore_more"))
+
+    def test_create_workspace_opens_real_scenario_workflow_without_ai(self) -> None:
+        app = self.create_home()
+        with patch(
+            "ai_service.DeepSeekEmailService.generate_scenario_email",
+        ) as generate_mock:
+            app.button(key="home__action__create").click().run(timeout=10)
+
+            self.assertFalse(list(app.exception))
+            self.assertEqual(
+                app.session_state["system__active_page"],
+                "create_workspace",
+            )
+            self.assertIn(
+                "Create Email Workspace",
+                "\n".join(item.value for item in app.markdown),
+            )
+            self.assertIsNotNone(app.button(key="compose__task__supplier_quotation"))
+            self.assertIsNotNone(app.button(key="compose__task__supplier_delivery"))
+            self.assertEqual(generate_mock.call_count, 0)
+
+    def test_improve_workspace_opens_draft_step_without_ai(self) -> None:
+        app = self.create_home()
+        with patch(
+            "ai_service.DeepSeekEmailService.improve_email",
+        ) as improve_mock:
+            app.button(key="home__action__improve").click().run(timeout=10)
+
+            self.assertFalse(list(app.exception))
+            self.assertEqual(
+                app.session_state["system__active_page"],
+                "improve_workspace",
+            )
+            self.assertIn(
+                "Improve Draft Workspace",
+                "\n".join(item.value for item in app.markdown),
+            )
+            self.assertIsNotNone(app.text_input(key="improve__draft_subject"))
+            self.assertIsNotNone(app.text_area(key="improve_original_email"))
+            self.assertIsNotNone(app.button(key="improve__draft_continue"))
+            self.assertEqual(improve_mock.call_count, 0)
+
+    def test_improve_workspace_requires_a_draft_before_advancing(self) -> None:
+        app = self.create_home()
+        with patch("ai_service.DeepSeekEmailService.improve_email") as improve_mock:
+            app.button(key="home__action__improve").click().run(timeout=10)
+            app.button(key="improve__draft_continue").click().run(timeout=10)
+
+            self.assertEqual(app.session_state["improve__step"], 1)
+            self.assertEqual(
+                app.error[0].value,
+                "请先粘贴需要优化的英文邮件。",
+            )
+            self.assertEqual(improve_mock.call_count, 0)
+
+    def test_improve_workspace_uses_targets_then_preserves_editable_result(self) -> None:
+        app = self.create_home()
+        result = EmailResult(
+            subject="Updated delivery plan",
+            body="Dear Team,\n\nPlease confirm the revised delivery plan.\n\nBest regards,",
+            usage_tokens=42,
+        )
+        with patch(
+            "ai_service.DeepSeekEmailService.improve_email",
+            return_value=result,
+        ) as improve_mock:
+            app.button(key="home__action__improve").click().run(timeout=10)
+            app.text_input(key="improve__draft_subject").set_value("Delivery plan")
+            app.text_area(key="improve_original_email").set_value(
+                "please confirm the delivery plan"
+            )
+            app.button(key="improve__draft_continue").click().run(timeout=10)
+
+            self.assertEqual(app.session_state["improve__step"], 2)
+            self.assertIsNotNone(app.button(key="improve__tone__formal"))
+            self.assertIsNotNone(app.button(key="improve__tone__friendly"))
+            self.assertTrue(
+                any(expander.label == "高级选项" for expander in app.expander)
+            )
+            app.button(key="improve__tone__friendly").click().run(timeout=10)
+            self.assertEqual(
+                app.session_state["saved_improve_tone_choice"],
+                "友好 · Friendly",
+            )
+
+            app.button(key="improve__start").click().run(timeout=10)
+            self.assertFalse(list(app.exception))
+            self.assertEqual(improve_mock.call_count, 1)
+            self.assertEqual(app.session_state["improve__step"], 3)
+            rendered = "\n".join(item.value for item in app.markdown)
+            self.assertIn("原始版本", rendered)
+            self.assertIn("优化版本", rendered)
+            self.assertEqual(
+                app.text_input(key="improved_subject_editor").value,
+                "Updated delivery plan",
+            )
+            app.text_area(key="improved_body_editor").set_value("Edited result.")
+            self.assertEqual(app.text_area(key="improved_body_editor").value, "Edited result.")
+            app.run(timeout=10)
+            self.assertEqual(improve_mock.call_count, 1)
+
+            app.button(key="improve__again").click().run(timeout=10)
+            self.assertEqual(app.session_state["improve__step"], 2)
+            self.assertEqual(improve_mock.call_count, 1)
+
+    def test_explore_more_returns_home_and_routes_supplier_without_ai(self) -> None:
+        app = self.create_home()
+        with patch(
+            "ai_service.DeepSeekEmailService.generate_scenario_email",
+        ) as generate_mock:
+            app.button(key="home__explore_more").click().run(timeout=10)
+            self.assertFalse(list(app.exception))
+            self.assertEqual(
+                app.session_state["system__active_page"], "explore_more"
+            )
+            self.assertIn(
+                "探索更多工作流",
+                "\n".join(item.value for item in app.markdown),
+            )
+            self.assertIsNotNone(app.button(key="explore__open__supplier"))
+            self.assertEqual(generate_mock.call_count, 0)
+
+            app.button(key="explore__open__supplier").click().run(timeout=10)
+            self.assertFalse(list(app.exception))
+            self.assertEqual(
+                app.session_state["system__active_page"],
+                "create_workspace",
+            )
+            self.assertIsNotNone(
+                app.button(key="compose__task__supplier_quotation")
+            )
+            self.assertEqual(generate_mock.call_count, 0)
+
+            app.button(key="workspace__create__return_home").click().run(timeout=10)
+            self.assertIsNotNone(app.button(key="home__action__reply"))
 
     def test_reply_home_entry_opens_real_analysis_workspace(self) -> None:
         app = self.create_home()
@@ -66,10 +201,36 @@ class StreamlitAppTests(unittest.TestCase):
         self.assertFalse(list(app.exception))
         rendered = "\n".join(item.value for item in app.markdown)
         self.assertIn("回复收到的邮件", rendered)
+        self.assertIn("Reply Email Workspace", rendered)
+        self.assertIn("分析来信、确认立场并生成专业商务回复。", rendered)
+        self.assertIn("步骤 1 / 5 · 来信邮件", rendered)
         self.assertIsNotNone(
             app.text_area(key="reply__original_email")
         )
+        self.assertIsNotNone(
+            app.button(key="workspace__reply__return_home")
+        )
         self.assertFalse(any("Phase 3" in item.value for item in app.info))
+
+    def test_reply_workspace_return_home_preserves_reply_input_without_ai(self) -> None:
+        app = self.create_home()
+        with patch(
+            "ai_service.DeepSeekEmailService.analyze_incoming_email",
+        ) as analyze_mock:
+            app.button(key="home__action__reply").click().run(timeout=10)
+            app.text_area(key="reply__original_email").set_value(
+                "Please provide the updated delivery plan."
+            ).run(timeout=10)
+            app.button(key="workspace__reply__return_home").click().run(
+                timeout=10
+            )
+            self.assertFalse(list(app.exception))
+            self.assertIsNotNone(app.button(key="home__action__reply"))
+            self.assertEqual(
+                app.session_state["reply__original_email"],
+                "Please provide the updated delivery plan.",
+            )
+            self.assertEqual(analyze_mock.call_count, 0)
 
     def test_reply_empty_and_high_risk_input_do_not_call_ai(self) -> None:
         app = self.create_home()
@@ -129,6 +290,62 @@ class StreamlitAppTests(unittest.TestCase):
                 "",
             )
 
+    def test_analysis_results_prioritize_reply_actions_and_dates(self) -> None:
+        app = self.create_home()
+        app.button(key="home__action__reply").click().run(timeout=10)
+        analysis = parse_incoming_email_analysis(json.dumps(VALID_ANALYSIS))
+        with patch(
+            "ai_service.DeepSeekEmailService.analyze_incoming_email",
+            return_value=analysis,
+        ) as analyze_mock:
+            app.text_area(key="reply__original_email").set_value(
+                "Please explain the delay and provide a recovery plan."
+            ).run(timeout=10)
+            app.button(key="reply__analyze").click().run(timeout=10)
+
+            rendered = "\n".join(item.value for item in app.markdown)
+            for expected in (
+                "la-analysis-summary",
+                "邮件摘要",
+                "高优先级",
+                "需要逐项回复",
+                "对方要求",
+                "关键日期",
+                "需要留意",
+                "建议回复思路",
+                "What caused the delay?",
+                "25 July",
+            ):
+                self.assertIn(expected, rendered)
+            self.assertIsNotNone(app.button(key="reply__start_decisions"))
+            self.assertIsNotNone(app.button(key="reply__modify"))
+            self.assertIsNotNone(app.button(key="reply__reanalyze"))
+            self.assertEqual(analyze_mock.call_count, 1)
+
+            app.button(key="reply__reanalyze").click().run(timeout=10)
+            self.assertEqual(app.session_state["reply__step"], 1)
+            self.assertEqual(analyze_mock.call_count, 1)
+
+    def test_analysis_empty_dates_use_directional_empty_state(self) -> None:
+        data = json.loads(json.dumps(VALID_ANALYSIS))
+        data["key_dates"] = []
+        analysis = parse_incoming_email_analysis(json.dumps(data))
+        app = self.create_home()
+        app.button(key="home__action__reply").click().run(timeout=10)
+        with patch(
+            "ai_service.DeepSeekEmailService.analyze_incoming_email",
+            return_value=analysis,
+        ):
+            app.text_area(key="reply__original_email").set_value(
+                "Please explain the delay."
+            ).run(timeout=10)
+            app.button(key="reply__analyze").click().run(timeout=10)
+
+        rendered = "\n".join(item.value for item in app.markdown)
+        self.assertIn("关键日期", rendered)
+        self.assertIn("未识别到明确日期要求", rendered)
+        self.assertNotIn('<div class="la-analysis-date-grid">', rendered)
+
     def test_zero_reply_items_offer_explicit_acknowledgement_path(
         self,
     ) -> None:
@@ -148,17 +365,15 @@ class StreamlitAppTests(unittest.TestCase):
             ).run(timeout=10)
             app.button(key="reply__analyze").click().run(timeout=10)
 
-        warnings = "\n".join(item.value for item in app.warning)
-        self.assertIn("未检测到明确需要回复的问题", warnings)
+        rendered = "\n".join(item.value for item in app.markdown)
+        self.assertIn("未识别到明确需要逐项回复的问题", rendered)
+        self.assertIn("Leon AI 仍可以帮助您生成一封确认收到", rendered)
         self.assertNotIn(
             "reply__start_decisions",
             [button.key for button in app.button],
         )
         self.assertEqual(app.session_state["reply__step"], 2)
 
-        app.radio(key="reply__zero_item_choice").set_value(
-            "是，生成确认收到的回复"
-        ).run(timeout=10)
         app.button(key="reply__continue_with_acknowledgement").click().run(
             timeout=10
         )
@@ -186,9 +401,6 @@ class StreamlitAppTests(unittest.TestCase):
             ).run(timeout=10)
             app.button(key="reply__analyze").click().run(timeout=10)
 
-        app.radio(key="reply__zero_item_choice").set_value(
-            "返回修改邮件"
-        ).run(timeout=10)
         app.button(key="reply__return_to_modify_from_zero").click().run(
             timeout=10
         )
@@ -265,12 +477,11 @@ class StreamlitAppTests(unittest.TestCase):
             )
 
             epoch = app.session_state["reply__decision_widget_epoch"]
-            app.selectbox(
+            app.button(
                 key=(
-                    f"reply__decision_widget__request_1__{epoch}__"
-                    "stance__display"
+                    f"reply__decision_option__request_1__{epoch}__accept"
                 )
-            ).select("接受并确认").run(timeout=10)
+            ).click().run(timeout=10)
             app.text_area(
                 key=(
                     f"reply__decision_widget__request_1__{epoch}__"
@@ -284,7 +495,7 @@ class StreamlitAppTests(unittest.TestCase):
             self.assertEqual(analyze_mock.call_count, 1)
             self.assertEqual(app.session_state["reply__step"], 3)
             rendered = "\n".join(item.value for item in app.markdown)
-            self.assertIn("回复决策摘要", rendered)
+            self.assertIn("回复策略确认", rendered)
             self.assertIsNotNone(
                 app.button(key="reply__generate_reply")
             )
@@ -318,12 +529,11 @@ class StreamlitAppTests(unittest.TestCase):
             app.button(key="reply__analyze").click().run(timeout=10)
             app.button(key="reply__start_decisions").click().run(timeout=10)
             epoch = app.session_state["reply__decision_widget_epoch"]
-            app.selectbox(
+            app.button(
                 key=(
-                    f"reply__decision_widget__request_1__{epoch}__"
-                    "stance__display"
+                    f"reply__decision_option__request_1__{epoch}__accept"
                 )
-            ).select("接受并确认").run(timeout=10)
+            ).click().run(timeout=10)
             app.text_area(
                 key=(
                     f"reply__decision_widget__request_1__{epoch}__"
@@ -352,6 +562,40 @@ class StreamlitAppTests(unittest.TestCase):
                 key="reply__decision_next__request_1"
             ).click().run(timeout=10)
             self.assertEqual(app.session_state["reply__step"], 3)
+            self.assertEqual(analyze_mock.call_count, 1)
+
+    def test_reply_decision_uses_single_item_selection_cards(self) -> None:
+        app = self.create_home()
+        app.button(key="home__action__reply").click().run(timeout=10)
+        analysis = parse_incoming_email_analysis(json.dumps(VALID_ANALYSIS))
+        with patch(
+            "ai_service.DeepSeekEmailService.analyze_incoming_email",
+            return_value=analysis,
+        ) as analyze_mock:
+            app.text_area(key="reply__original_email").set_value(
+                "Please explain the delay."
+            ).run(timeout=10)
+            app.button(key="reply__analyze").click().run(timeout=10)
+            app.button(key="reply__start_decisions").click().run(timeout=10)
+            epoch = app.session_state["reply__decision_widget_epoch"]
+            for stance in (
+                "accept",
+                "partial",
+                "unable_to_confirm",
+                "request_info",
+                "decline",
+                "no_response",
+                "custom",
+            ):
+                self.assertIsNotNone(
+                    app.button(
+                        key=(
+                            "reply__decision_option__request_1__"
+                            f"{epoch}__{stance}"
+                        )
+                    )
+                )
+            self.assertIn("事项 1 / 1", "\n".join(item.value for item in app.markdown))
             self.assertEqual(analyze_mock.call_count, 1)
 
     def test_phase3c_generates_then_checks_and_edit_only_rechecks(self) -> None:
@@ -415,25 +659,13 @@ class StreamlitAppTests(unittest.TestCase):
                 "Executive"
             ).run(timeout=10)
             app.button(key="reply__generate_reply").click().run(timeout=10)
-            self.assertEqual(app.session_state["reply__step"], 5)
+            self.assertEqual(app.session_state["reply__step"], 4)
             self.assertEqual(generate_mock.call_count, 1)
             self.assertEqual(coverage_mock.call_count, 1)
             self.assertEqual(preflight_mock.call_count, 0)
             self.assertIn("Sincerely,", app.session_state["reply__body"])
             rendered = "\n".join(item.value for item in app.markdown)
-            self.assertIn("本次回复覆盖 1 / 1 项", rendered)
-
-            app.button(key="preflight__run").click().run(timeout=10)
-            self.assertEqual(preflight_mock.call_count, 1)
-            self.assertEqual(
-                app.session_state["preflight__status"], "success"
-            )
-            self.assertEqual(
-                app.session_state["preflight__report"].overall_status,
-                "CHECK",
-            )
-            app.run(timeout=10)
-            self.assertEqual(preflight_mock.call_count, 1)
+            self.assertIn("1 项已覆盖", rendered)
 
             app.text_area(key="reply__body").set_value(
                 app.session_state["reply__body"] + "\nAdditional clarification."
@@ -447,6 +679,33 @@ class StreamlitAppTests(unittest.TestCase):
             app.button(key="reply__recheck_coverage").click().run(timeout=10)
             self.assertEqual(generate_mock.call_count, 1)
             self.assertEqual(coverage_mock.call_count, 2)
+
+            app.button(key="reply__continue_preflight").click().run(timeout=10)
+            self.assertEqual(app.session_state["reply__step"], 5)
+            app.button(key="preflight__run").click().run(timeout=10)
+            self.assertEqual(
+                preflight_mock.call_count,
+                1,
+                f"preflight status: {app.session_state['preflight__status']}; "
+                f"error: {app.session_state['preflight__error']}; "
+                f"exceptions: {list(app.exception)}",
+            )
+            self.assertEqual(
+                app.session_state["preflight__status"], "success"
+            )
+            self.assertEqual(
+                app.session_state["preflight__report"].overall_status,
+                "CHECK",
+            )
+            app.run(timeout=10)
+            self.assertEqual(preflight_mock.call_count, 1)
+            rendered = "\n".join(item.value for item in app.markdown)
+            self.assertIn("邮件已准备完成", rendered)
+            self.assertIn("建议确认", rendered)
+            self.assertNotIn(items[0].item_id, rendered)
+            self.assertIsNotNone(app.button(key="reply__completion_back"))
+            self.assertIsNotNone(app.button(key="reply__completion_new"))
+
 
     def test_reply_analysis_failure_keeps_original_email(self) -> None:
         app = self.create_home()
@@ -537,7 +796,9 @@ class StreamlitAppTests(unittest.TestCase):
 
             self.assertEqual(analyze_mock.call_count, 1)
             rendered = "\n".join(item.value for item in app.markdown)
-            self.assertIn("来信分析结果", rendered)
+            self.assertIn("快速理解 · ANALYSIS", rendered)
+            self.assertIn("关键日期", rendered)
+            self.assertIn("需要留意", rendered)
             self.assertIn("17th July → 24th July", rendered)
             self.assertIn("End July → Mid Aug", rendered)
             self.assertIn("does not explicitly request a reply", rendered)
@@ -546,8 +807,8 @@ class StreamlitAppTests(unittest.TestCase):
 
     def create_supplier_workflow(self) -> AppTest:
         app = self.create_home()
-        app.button(key="home__action__supplier").click().run(timeout=10)
-        app.button(key="home__open_supplier_workflow").click().run(timeout=10)
+        app.button(key="home__explore_more").click().run(timeout=10)
+        app.button(key="explore__open__supplier").click().run(timeout=10)
         self.assertFalse(list(app.exception))
         return app
 
@@ -688,7 +949,7 @@ class StreamlitAppTests(unittest.TestCase):
         )
         self.complete_quotation_questions(app)
         rendered = "\n".join(item.value for item in app.markdown)
-        self.assertIn("本次商务沟通信息", rendered)
+        self.assertIn("邮件信息确认", rendered)
         self.assertIn("ABC Components", rendered)
         self.assertIn("Control panels", rendered)
         self.assertNotIn("项目名称</div>", rendered)
@@ -728,8 +989,34 @@ class StreamlitAppTests(unittest.TestCase):
                 app.text_input(key="compose__result_subject").value,
                 "Quotation Follow-up",
             )
+            self.assertIsNotNone(app.button(key="compose__regenerate"))
+            self.assertIsNotNone(app.button(key="compose__edit_information"))
             app.run(timeout=10)
             self.assertEqual(generate_mock.call_count, 1)
+
+    def test_create_result_returns_to_review_with_saved_advanced_details(self) -> None:
+        app = self.create_supplier_workflow()
+        app.button(key="compose__task__supplier_quotation").click().run(timeout=10)
+        mocked = EmailResult(subject="Quotation Follow-up", body="Please reply.")
+        with patch(
+            "ai_service.DeepSeekEmailService.generate_scenario_email",
+            return_value=mocked,
+        ):
+            self.complete_quotation_questions(app)
+            app.session_state["compose__tone_choice"] = "友好 · Friendly"
+            app.session_state["compose__country_region"] = "中国 / China"
+            app.session_state["compose__recipient"] = "Supplier Team"
+            app.session_state["shared_sender_name"] = "David Chen"
+            app.button(key="compose__generate").click().run(timeout=10)
+            app.button(key="compose__edit_information").click().run(timeout=10)
+            self.assertEqual(
+                app.session_state["compose__ui_generation_context"]["tone"],
+                "Friendly",
+            )
+            self.assertIn(
+                "高级选项",
+                "\n".join(item.label for item in app.expander),
+            )
 
     def test_supplier_review_edit_can_generate_updated_email(self) -> None:
         app = self.create_supplier_workflow()
@@ -764,20 +1051,22 @@ class StreamlitAppTests(unittest.TestCase):
 
     def test_legacy_improve_is_reachable_and_can_return_home(self) -> None:
         app = self.create_home()
-        app.button(key="home__action__improve").click().run(timeout=10)
-        app.button(key="home__open_legacy_improve").click().run(timeout=10)
+        app.session_state["system__active_page"] = "legacy_improve_editor"
+        app.session_state["writing_mode"] = "优化英文邮件"
+        app.run(timeout=10)
         self.assertIsNotNone(app.text_area(key="improve_original_email"))
         self.assertEqual(app.session_state["writing_mode"], "优化英文邮件")
         app.button(key="legacy__return_home").click().run(timeout=10)
         self.assertIsNotNone(app.button(key="home__action__reply"))
 
     def test_home_has_mobile_single_column_css(self) -> None:
-        source = (
-            APP_PATH.parent / "ui" / "pages" / "home.py"
-        ).read_text(encoding="utf-8")
-        self.assertIn("@media (max-width:640px)", source)
+        source = (APP_PATH.parent / "ui" / "styles.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("@media (max-width: 640px)", source)
         self.assertIn("flex-direction:column", source)
-        self.assertIn("overflow-x:hidden", source)
+        self.assertIn("overflow-x:clip", source)
+        self.assertIn('[data-testid="stMainBlockContainer"]', source)
 
     def test_required_field_messages_are_in_chinese(self) -> None:
         app = self.create_app()
@@ -796,7 +1085,7 @@ class StreamlitAppTests(unittest.TestCase):
         rendered = "\n".join(item.value for item in app.markdown)
         self.assertIn(APP_NAME_ZH, rendered)
         self.assertIn(APP_NAME_EN, rendered)
-        self.assertEqual(APP_VERSION, "2.0")
+        self.assertEqual(APP_VERSION, "2.1")
         self.assertIn(
             "未指定 / Not Specified",
             app.selectbox(key="generate_country_region").options,
