@@ -5,7 +5,7 @@ import re
 import unittest
 
 from ui.pages.reply import _reply_workflow_steps, render_reply_workspace
-from ui import styles
+from ui import components, styles
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -93,6 +93,31 @@ class ReplyWorkspaceContractTests(unittest.TestCase):
         self.assertIn("@media (max-width: 768px)", styles_source)
         self.assertIn("flex-direction:column", styles_source)
         self.assertIn("overflow-x:clip", styles_source)
+
+    def test_analysis_presentation_uses_shared_components_and_tokens(self) -> None:
+        reply_source = (PROJECT_ROOT / "ui" / "pages" / "reply.py").read_text(
+            encoding="utf-8"
+        )
+        styles_source = inspect.getsource(styles)
+        for name in (
+            "render_analysis_summary_panel",
+            "render_analysis_action_cards",
+            "render_analysis_date_cards",
+            "render_analysis_notices",
+            "render_strategy_list",
+            "tertiary_action_button",
+        ):
+            self.assertTrue(callable(getattr(components, name)))
+            self.assertIn(name, reply_source)
+        for selector in (
+            ".la-analysis-summary",
+            ".la-analysis-item",
+            ".la-analysis-date-grid",
+            ".la-analysis-notice",
+            ".la-strategy-list",
+        ):
+            self.assertIn(selector, styles_source)
+        self.assertIn(".la-analysis-date-grid { grid-template-columns:1fr; }", styles_source)
 
 
 if __name__ == "__main__":

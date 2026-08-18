@@ -32,6 +32,35 @@ class WorkflowStep:
     state: str = "upcoming"
 
 
+@dataclass(frozen=True)
+class AnalysisAction:
+    """Presentation-only information required by one analysis action card."""
+
+    title: str
+    deadline: str | None = None
+    required: bool = False
+    uncertain: bool = False
+    related_context: str | None = None
+
+
+@dataclass(frozen=True)
+class AnalysisDate:
+    """Presentation-only information required by one analysis date card."""
+
+    value: str
+    meaning: str
+    uncertain: bool = False
+
+
+@dataclass(frozen=True)
+class AnalysisNotice:
+    """Presentation-only information required by one analysis notice."""
+
+    title: str
+    body: str
+    kind: str = "info"
+
+
 def render_global_header(
     *,
     version: str,
@@ -268,6 +297,138 @@ def render_loading_state(title: str, helper: str) -> None:
     )
 
 
+def render_analysis_summary_panel(
+    *,
+    summary: str,
+    sender_intent: str,
+    urgency_label: str,
+    urgency_kind: str,
+) -> None:
+    """Present the one-screen summary for an incoming-email analysis."""
+    allowed = {"success", "info", "warning", "risk"}
+    safe_kind = urgency_kind if urgency_kind in allowed else "info"
+    st.markdown(
+        f"""
+        <section class="la-analysis-summary">
+          <div class="la-analysis-summary__topline">
+            <span class="la-analysis-summary__eyebrow">快速理解 · ANALYSIS</span>
+            <span class="la-status-badge la-status-badge--{safe_kind}">{html.escape(urgency_label)}</span>
+          </div>
+          <div class="la-analysis-summary__title">邮件摘要</div>
+          <p>{html.escape(summary)}</p>
+          <div class="la-analysis-summary__intent"><strong>对方意图</strong>{html.escape(sender_intent)}</div>
+        </section>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_analysis_action_cards(
+    items: tuple[AnalysisAction, ...],
+    *,
+    variant: str,
+) -> None:
+    """Render structured requests or questions without exposing internal IDs."""
+    safe_variant = "question" if variant == "question" else "request"
+    cards = "".join(
+        _analysis_action_card(item, index=index, variant=safe_variant)
+        for index, item in enumerate(items, start=1)
+    )
+    st.markdown(
+        f'<div class="la-analysis-actions la-analysis-actions--{safe_variant}">{cards}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _analysis_action_card(
+    item: AnalysisAction,
+    *,
+    index: int,
+    variant: str,
+) -> str:
+    metadata: list[str] = []
+    if item.deadline:
+        metadata.append(
+            f'<span class="la-analysis-item__deadline">截止：{html.escape(item.deadline)}</span>'
+        )
+    if item.required:
+        metadata.append('<span class="la-analysis-item__flag">必须回复</span>')
+    if item.uncertain:
+        metadata.append('<span class="la-analysis-item__flag">信息待确认</span>')
+    context = (
+        f'<div class="la-analysis-item__context">关联要求：{html.escape(item.related_context)}</div>'
+        if item.related_context
+        else ""
+    )
+    return f"""
+        <article class="la-analysis-item la-analysis-item--{variant}">
+          <span class="la-analysis-item__index">{index:02d}</span>
+          <div class="la-analysis-item__content">
+            <p>{html.escape(item.title)}</p>
+            {context}
+            <div class="la-analysis-item__meta">{''.join(metadata)}</div>
+          </div>
+        </article>
+    """
+
+
+def render_analysis_date_cards(items: tuple[AnalysisDate, ...]) -> None:
+    """Render key dates with concise value-first visual emphasis."""
+    cards = "".join(
+        f"""
+        <article class="la-analysis-date-card">
+          <strong>{html.escape(item.value)}</strong>
+          <span>{html.escape(item.meaning)}</span>
+          {"<em>待确认</em>" if item.uncertain else ""}
+        </article>
+        """
+        for item in items
+    )
+    st.markdown(
+        f'<div class="la-analysis-date-grid">{cards}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_analysis_notices(items: tuple[AnalysisNotice, ...]) -> None:
+    """Render supportive, severity-aware notices for analysis follow-up."""
+    allowed = {"info", "warning", "risk"}
+    notices = "".join(
+        f"""
+        <aside class="la-analysis-notice la-analysis-notice--{item.kind if item.kind in allowed else 'info'}">
+          <strong>{html.escape(item.title)}</strong>
+          <span>{html.escape(item.body)}</span>
+        </aside>
+        """
+        for item in items
+    )
+    st.markdown(notices, unsafe_allow_html=True)
+
+
+def render_strategy_list(
+    items: tuple[str, ...],
+    *,
+    initial_limit: int = 3,
+) -> None:
+    """Keep advice concise first, with optional details kept out of the way."""
+    visible = items[:initial_limit]
+    remaining = items[initial_limit:]
+    st.markdown(
+        '<ol class="la-strategy-list">'
+        + "".join(f"<li>{html.escape(item)}</li>" for item in visible)
+        + "</ol>",
+        unsafe_allow_html=True,
+    )
+    if remaining:
+        with st.expander("查看更多建议", expanded=False):
+            st.markdown(
+                '<ol class="la-strategy-list la-strategy-list--more">'
+                + "".join(f"<li>{html.escape(item)}</li>" for item in remaining)
+                + "</ol>",
+                unsafe_allow_html=True,
+            )
+
+
 def render_workspace_empty_state(title: str, helper: str) -> None:
     """Present an intentionally empty task canvas inside the workspace shell."""
     st.markdown(
@@ -346,3 +507,19 @@ def secondary_action_button(
         on_click=on_click,
         disabled=disabled,
     )
+
+
+def tertiary_action_button(
+    label: str,
+    *,
+    key: str,
+    on_click: Callable[[], None] | None = None,
+) -> bool:
+    """Render an intentionally quiet optional action with a stable key."""
+    with st.container(key=f"tertiary_action__{key}"):
+        return st.button(
+            label,
+            key=key,
+            type="secondary",
+            on_click=on_click,
+        )

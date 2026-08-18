@@ -252,6 +252,62 @@ class StreamlitAppTests(unittest.TestCase):
                 "",
             )
 
+    def test_analysis_results_prioritize_reply_actions_and_dates(self) -> None:
+        app = self.create_home()
+        app.button(key="home__action__reply").click().run(timeout=10)
+        analysis = parse_incoming_email_analysis(json.dumps(VALID_ANALYSIS))
+        with patch(
+            "ai_service.DeepSeekEmailService.analyze_incoming_email",
+            return_value=analysis,
+        ) as analyze_mock:
+            app.text_area(key="reply__original_email").set_value(
+                "Please explain the delay and provide a recovery plan."
+            ).run(timeout=10)
+            app.button(key="reply__analyze").click().run(timeout=10)
+
+            rendered = "\n".join(item.value for item in app.markdown)
+            for expected in (
+                "la-analysis-summary",
+                "邮件摘要",
+                "高优先级",
+                "需要逐项回复",
+                "对方要求",
+                "关键日期",
+                "需要留意",
+                "建议回复思路",
+                "What caused the delay?",
+                "25 July",
+            ):
+                self.assertIn(expected, rendered)
+            self.assertIsNotNone(app.button(key="reply__start_decisions"))
+            self.assertIsNotNone(app.button(key="reply__modify"))
+            self.assertIsNotNone(app.button(key="reply__reanalyze"))
+            self.assertEqual(analyze_mock.call_count, 1)
+
+            app.button(key="reply__reanalyze").click().run(timeout=10)
+            self.assertEqual(app.session_state["reply__step"], 1)
+            self.assertEqual(analyze_mock.call_count, 1)
+
+    def test_analysis_empty_dates_use_directional_empty_state(self) -> None:
+        data = json.loads(json.dumps(VALID_ANALYSIS))
+        data["key_dates"] = []
+        analysis = parse_incoming_email_analysis(json.dumps(data))
+        app = self.create_home()
+        app.button(key="home__action__reply").click().run(timeout=10)
+        with patch(
+            "ai_service.DeepSeekEmailService.analyze_incoming_email",
+            return_value=analysis,
+        ):
+            app.text_area(key="reply__original_email").set_value(
+                "Please explain the delay."
+            ).run(timeout=10)
+            app.button(key="reply__analyze").click().run(timeout=10)
+
+        rendered = "\n".join(item.value for item in app.markdown)
+        self.assertIn("关键日期", rendered)
+        self.assertIn("未识别到明确日期要求", rendered)
+        self.assertNotIn('<div class="la-analysis-date-grid">', rendered)
+
     def test_zero_reply_items_offer_explicit_acknowledgement_path(
         self,
     ) -> None:
@@ -271,17 +327,15 @@ class StreamlitAppTests(unittest.TestCase):
             ).run(timeout=10)
             app.button(key="reply__analyze").click().run(timeout=10)
 
-        warnings = "\n".join(item.value for item in app.warning)
-        self.assertIn("未检测到明确需要回复的问题", warnings)
+        rendered = "\n".join(item.value for item in app.markdown)
+        self.assertIn("未识别到明确需要逐项回复的问题", rendered)
+        self.assertIn("Leon AI 仍可以帮助您生成一封确认收到", rendered)
         self.assertNotIn(
             "reply__start_decisions",
             [button.key for button in app.button],
         )
         self.assertEqual(app.session_state["reply__step"], 2)
 
-        app.radio(key="reply__zero_item_choice").set_value(
-            "是，生成确认收到的回复"
-        ).run(timeout=10)
         app.button(key="reply__continue_with_acknowledgement").click().run(
             timeout=10
         )
@@ -309,9 +363,6 @@ class StreamlitAppTests(unittest.TestCase):
             ).run(timeout=10)
             app.button(key="reply__analyze").click().run(timeout=10)
 
-        app.radio(key="reply__zero_item_choice").set_value(
-            "返回修改邮件"
-        ).run(timeout=10)
         app.button(key="reply__return_to_modify_from_zero").click().run(
             timeout=10
         )
@@ -660,7 +711,9 @@ class StreamlitAppTests(unittest.TestCase):
 
             self.assertEqual(analyze_mock.call_count, 1)
             rendered = "\n".join(item.value for item in app.markdown)
-            self.assertIn("来信分析结果", rendered)
+            self.assertIn("快速理解 · ANALYSIS", rendered)
+            self.assertIn("关键日期", rendered)
+            self.assertIn("需要留意", rendered)
             self.assertIn("17th July → 24th July", rendered)
             self.assertIn("End July → Mid Aug", rendered)
             self.assertIn("does not explicitly request a reply", rendered)
