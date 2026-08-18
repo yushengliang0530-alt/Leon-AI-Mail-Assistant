@@ -225,10 +225,21 @@ def _header_icon(name: str) -> str:
 
 
 def render_workflow_nav(steps: tuple[WorkflowStep, ...]) -> None:
-    """Render the display-only workflow rail without changing task state."""
+    """Render the workflow rail as a self-contained HTML component.
+
+    ``st.html`` deliberately avoids Markdown parsing, which prevents the
+    navigation markup from being presented as literal text in a workspace.
+    ``unsafe_allow_javascript`` remains at its secure default (``False``).
+    """
+    st.html(_workflow_nav_html(steps))
+
+
+def _workflow_nav_html(steps: tuple[WorkflowStep, ...]) -> str:
+    """Build the escaped, semantic workflow-navigation markup for rendering."""
+    allowed_states = {"complete", "current", "upcoming"}
     items = "".join(
         f"""
-        <li class="la-workflow-nav__item la-workflow-nav__item--{html.escape(step.state)}">
+        <li class="la-workflow-nav__item la-workflow-nav__item--{state}"{aria_current}>
           <span class="la-workflow-nav__marker" aria-hidden="true"></span>
           <span>
             <strong>{html.escape(step.label)}</strong>
@@ -237,11 +248,10 @@ def render_workflow_nav(steps: tuple[WorkflowStep, ...]) -> None:
         </li>
         """
         for step in steps
+        for state in (step.state if step.state in allowed_states else "upcoming",)
+        for aria_current in (' aria-current="step"' if state == "current" else "",)
     )
-    st.markdown(
-        f'<nav class="la-workflow-nav" aria-label="任务流程"><ol>{items}</ol></nav>',
-        unsafe_allow_html=True,
-    )
+    return f'<nav class="la-workflow-nav" aria-label="任务流程"><ol>{items}</ol></nav>'
 
 
 def render_workspace_shell(
@@ -276,12 +286,13 @@ def render_workspace_shell(
             step_label=_current_step_label(steps),
             icon=icon,
         )
-        navigation, canvas = st.columns((0.28, 0.72), gap="large")
-        with navigation:
-            render_workflow_nav(steps)
-        with canvas:
-            with st.container(key=f"workspace__{workspace_key}__task_area"):
-                render_task()
+        with st.container(key=f"workspace__{workspace_key}__body_layout"):
+            navigation, canvas = st.columns((0.28, 0.72), gap="large")
+            with navigation:
+                render_workflow_nav(steps)
+            with canvas:
+                with st.container(key=f"workspace__{workspace_key}__task_area"):
+                    render_task()
 
 
 def _current_step_label(steps: tuple[WorkflowStep, ...]) -> str:

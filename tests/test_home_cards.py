@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from ui import components, styles
-from ui.pages import compose_supplier, explore, home, improve
+from ui.pages import compose_supplier, explore, home, improve, reply
 
 
 EXPECTED_ACTIONS = {"reply", "create", "improve"}
@@ -118,6 +118,8 @@ class HomeTaskCardTests(unittest.TestCase):
         self.assertIn(".la-workflow-nav", source)
         self.assertIn(".la-action-bar", source)
         self.assertIn(".la-workspace-empty-state", source)
+        self.assertIn("body_layout", source)
+        self.assertIn('data-testid="stColumn"', source)
         self.assertIn('@media (max-width: 768px)', source)
         self.assertIn("flex-direction:column", compact)
         self.assertIn("overflow-x:clip", compact)
@@ -129,6 +131,40 @@ class HomeTaskCardTests(unittest.TestCase):
         self.assertIn("la-workspace-header__icon", source)
         self.assertIn("icon: str = \"spark\"", source)
         self.assertIn(".la-workflow-nav { display:none; }", style_source)
+
+    def test_workflow_navigation_is_rendered_as_a_safe_html_component(self) -> None:
+        """The shared rail must not fall back to visible HTML source text."""
+        steps = (
+            components.WorkflowStep(
+                key="email",
+                label="邮件 <草稿>",
+                helper="Email & review",
+                state="current",
+            ),
+        )
+        with patch.object(components.st, "html") as html_renderer:
+            components.render_workflow_nav(steps)
+
+        html_renderer.assert_called_once()
+        rendered = html_renderer.call_args.args[0]
+        self.assertIn('<nav class="la-workflow-nav"', rendered)
+        self.assertIn("aria-current=\"step\"", rendered)
+        self.assertIn("邮件 &lt;草稿&gt;", rendered)
+        self.assertNotIn("邮件 <草稿>", rendered)
+        self.assertTrue(rendered.rstrip().endswith("</nav>"))
+
+    def test_all_workspace_workflow_navigation_labels_render_in_shared_markup(self) -> None:
+        workflows = (
+            reply._reply_workflow_steps(2),
+            compose_supplier._workflow_steps(2),
+            improve._workflow_steps(2),
+        )
+        for steps in workflows:
+            rendered = components._workflow_nav_html(steps)
+            self.assertEqual(rendered.count('<li class="la-workflow-nav__item'), len(steps))
+            for step in steps:
+                self.assertIn(step.label, rendered)
+                self.assertIn(step.helper, rendered)
 
     def test_create_completed_steps_use_the_shared_complete_state(self) -> None:
         states = [step.state for step in compose_supplier._workflow_steps(3)]

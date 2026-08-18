@@ -69,11 +69,11 @@ class ReplyWorkspaceContractTests(unittest.TestCase):
     def test_reply_stepper_maps_existing_reply_state_without_mutating_it(self) -> None:
         steps = _reply_workflow_steps(3)
         self.assertEqual([step.label for step in steps], [
-            "Email",
-            "Analysis",
-            "Decision",
-            "Generate",
-            "Check",
+            "来信邮件",
+            "邮件分析",
+            "确认立场",
+            "生成回复",
+            "发送前检查",
         ])
         self.assertEqual(
             [step.state for step in steps],

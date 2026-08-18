@@ -75,11 +75,11 @@ RISK_PRESENTATION = {
 
 
 REPLY_WORKFLOW = (
-    ("email", "Email", "Incoming email"),
-    ("analysis", "Analysis", "Understand the request"),
-    ("decision", "Decision", "Confirm your position"),
-    ("generate", "Generate", "Create the reply"),
-    ("check", "Check", "Review before sending"),
+    ("email", "来信邮件", "Incoming Email"),
+    ("analysis", "邮件分析", "Analysis"),
+    ("decision", "确认立场", "Decision"),
+    ("generate", "生成回复", "Generate"),
+    ("check", "发送前检查", "Check"),
 )
 
 

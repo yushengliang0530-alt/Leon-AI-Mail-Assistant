@@ -203,8 +203,7 @@ class StreamlitAppTests(unittest.TestCase):
         self.assertIn("回复收到的邮件", rendered)
         self.assertIn("Reply Email Workspace", rendered)
         self.assertIn("分析来信、确认立场并生成专业商务回复。", rendered)
-        for label in ("Email", "Analysis", "Decision", "Generate", "Check"):
-            self.assertIn(label, rendered)
+        self.assertIn("步骤 1 / 5 · 来信邮件", rendered)
         self.assertIsNotNone(
             app.text_area(key="reply__original_email")
         )
