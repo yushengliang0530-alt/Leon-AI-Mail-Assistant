@@ -35,6 +35,27 @@ class WorkflowStep:
 
 
 @dataclass(frozen=True)
+class ScenarioCard:
+    """A concise, display-only definition for a selectable email scenario."""
+
+    key: str
+    title: str
+    description: str
+    icon: str
+    available: bool = True
+    status: str = ""
+
+
+@dataclass(frozen=True)
+class ReviewItem:
+    """One fact shown in the compact confirmation step of a workspace."""
+
+    key: str
+    label: str
+    value: str
+
+
+@dataclass(frozen=True)
 class AnalysisAction:
     """Presentation-only information required by one analysis action card."""
 
@@ -280,6 +301,82 @@ def render_task_card(
         use_container_width=True,
         on_click=on_click,
     )
+
+
+def render_scenario_cards(
+    cards: tuple[ScenarioCard, ...],
+    *,
+    key_prefix: str,
+    on_select: Callable[[str], None] | None = None,
+) -> str | None:
+    """Render one consistent scenario-card family without embedding workflow rules."""
+    selected: str | None = None
+    with st.container(key=f"scenario_cards__{key_prefix}"):
+        for card in cards:
+            label = f"{card.title}\n{card.description}"
+            if not card.available:
+                label = f"{card.title} · {card.status or 'Coming soon'}\n{card.description}"
+            if st.button(
+                label,
+                key=f"{key_prefix}{card.key}",
+                type="secondary",
+                icon=f":material/{card.icon}:",
+                use_container_width=True,
+                disabled=not card.available,
+            ):
+                selected = card.key
+                if on_select:
+                    on_select(card.key)
+    return selected
+
+
+def render_guided_question_header(
+    *,
+    current: int,
+    total: int,
+    title: str,
+    helper: str,
+    required: bool,
+) -> None:
+    """Render the reusable heading for a one-question-at-a-time task canvas."""
+    requirement = "必填" if required else "可选"
+    st.markdown(
+        f"""
+        <div class="la-guided-question__progress">问题 {current} / {total} · {requirement}</div>
+        <h2 class="la-guided-question__title">{html.escape(title)}</h2>
+        <p class="la-guided-question__helper">{html.escape(helper)}</p>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_review_items(
+    items: tuple[ReviewItem, ...],
+    *,
+    action_key_prefix: str,
+) -> str | None:
+    """Render fact-first review rows and return the field selected for editing."""
+    selected: str | None = None
+    with st.container(key=f"review_items__{action_key_prefix}"):
+        for item in items:
+            content, action = st.columns((5, 1), gap="small")
+            with content:
+                st.markdown(
+                    f"""
+                    <article class="la-review-item">
+                      <span>{html.escape(item.label)}</span>
+                      <strong>{html.escape(item.value)}</strong>
+                    </article>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            with action:
+                if secondary_action_button(
+                    "修改",
+                    key=f"{action_key_prefix}{item.key}",
+                ):
+                    selected = item.key
+    return selected
 
 
 def render_status_badge(label: str, kind: str = "info") -> None:

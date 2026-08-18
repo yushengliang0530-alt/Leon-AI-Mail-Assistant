@@ -38,14 +38,11 @@ from services.scenario_service import ScenarioService
 from services.incoming_email_analysis import IncomingEmailAnalysisService
 from services.reply_generation_service import ReplyGenerationService
 from services.preflight_service import PreflightService
-from ui.pages.compose_supplier import render_supplier_workflow
+from ui.pages.compose_supplier import render_create_workspace, render_supplier_workflow
 from ui.pages.explore import render_explore_more
 from ui.pages.home import render_home
 from ui.pages.reply import render_reply_workspace
-from ui.pages.workspace_foundation import (
-    render_create_workspace,
-    render_improve_workspace,
-)
+from ui.pages.workspace_foundation import render_improve_workspace
 from ui.state import (
     get_active_page,
     initialize_home_state,
@@ -947,9 +944,8 @@ if current_active_page == "explore_more":
 
 if current_active_page == "create_workspace":
     render_create_workspace(
+        scenario_service=ScenarioService(DeepSeekEmailService(settings)),
         service_status=home_service_status,
-        on_return_home=return_to_home,
-        on_open_editor=open_legacy_create_editor,
     )
     st.stop()
 
@@ -964,6 +960,7 @@ if current_active_page == "improve_workspace":
 if current_active_page == "supplier_workspace":
     render_supplier_workflow(
         scenario_service=ScenarioService(DeepSeekEmailService(settings)),
+        service_status=home_service_status,
     )
     st.stop()
 

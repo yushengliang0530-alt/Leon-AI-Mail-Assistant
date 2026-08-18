@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from ui import components, styles
-from ui.pages import explore, home, workspace_foundation
+from ui.pages import compose_supplier, explore, home, workspace_foundation
 
 
 EXPECTED_ACTIONS = {"reply", "create", "improve"}
@@ -77,18 +77,19 @@ class HomeTaskCardTests(unittest.TestCase):
             all(not item["available"] for key, item in items.items() if key != "supplier")
         )
 
-    def test_workspace_foundation_uses_single_shell_and_empty_state(self) -> None:
-        source = inspect.getsource(workspace_foundation.render_create_workspace)
+    def test_workspaces_use_single_shell_without_create_placeholder(self) -> None:
+        source = inspect.getsource(compose_supplier.render_create_workspace)
         improve_source = inspect.getsource(
             workspace_foundation.render_improve_workspace
         )
         self.assertIn("render_workspace_shell", source)
-        self.assertIn("render_workspace_empty_state", source)
-        self.assertIn("render_action_bar", source)
+        self.assertIn("_workflow_steps", source)
+        self.assertIn("_render_step_one", source)
+        self.assertIn("_render_step_four", source)
         self.assertIn("render_workspace_shell", improve_source)
         self.assertIn("render_workspace_empty_state", improve_source)
         self.assertIn("render_action_bar", improve_source)
-        self.assertEqual(len(workspace_foundation.CREATE_WORKFLOW_STEPS), 3)
+        self.assertEqual(len(compose_supplier.CREATE_WORKFLOW_STEPS), 4)
         self.assertEqual(len(workspace_foundation.IMPROVE_WORKFLOW_STEPS), 3)
 
     def test_design_tokens_cover_required_status_and_spacing_values(self) -> None:
@@ -129,6 +130,9 @@ class HomeTaskCardTests(unittest.TestCase):
             "render_workflow_nav",
             "render_action_bar",
             "render_workspace_empty_state",
+            "render_scenario_cards",
+            "render_guided_question_header",
+            "render_review_items",
         ):
             self.assertTrue(callable(getattr(components, name)))
 

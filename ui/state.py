@@ -87,6 +87,7 @@ COMPOSE_DEFAULTS = {
     "compose__usage_tokens": None,
     "compose__request_in_progress": False,
     "compose__error": "",
+    "compose__ui_generation_context": {},
 }
 
 REPLY_DEFAULTS = {
@@ -191,7 +192,8 @@ def open_legacy_improve() -> None:
 
 
 def open_supplier_workflow() -> None:
-    _navigate_to(SUPPLIER_PAGE, "supplier", SUPPLIER_VIEW)
+    """Route the catalog's Supplier entry into the unified Create workspace."""
+    _navigate_to(CREATE_PAGE, "create", CREATE_VIEW)
 
 
 def open_reply_workspace() -> None:
@@ -414,6 +416,7 @@ def set_compose_task(task_id: str) -> None:
         st.session_state["compose__result_subject"] = ""
         st.session_state["compose__result_body"] = ""
         st.session_state["compose__analysis"] = None
+        st.session_state["compose__ui_generation_context"] = {}
     st.session_state["compose__task_id"] = task_id
     st.session_state["compose__step"] = 2
     st.session_state["compose__error"] = ""

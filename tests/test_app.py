@@ -59,12 +59,10 @@ class StreamlitAppTests(unittest.TestCase):
             self.assertIsNotNone(app.button(key=f"home__action__{action}"))
         self.assertIsNotNone(app.button(key="home__explore_more"))
 
-    def test_create_workspace_is_presentation_only_and_opens_existing_editor(
-        self,
-    ) -> None:
+    def test_create_workspace_opens_real_scenario_workflow_without_ai(self) -> None:
         app = self.create_home()
         with patch(
-            "ai_service.DeepSeekEmailService.generate_email",
+            "ai_service.DeepSeekEmailService.generate_scenario_email",
         ) as generate_mock:
             app.button(key="home__action__create").click().run(timeout=10)
 
@@ -74,23 +72,11 @@ class StreamlitAppTests(unittest.TestCase):
                 "create_workspace",
             )
             self.assertIn(
-                "从必要事实开始创建邮件",
+                "Create Email Workspace",
                 "\n".join(item.value for item in app.markdown),
             )
-            self.assertIsNotNone(
-                app.button(key="create_workspace__open_editor")
-            )
-            self.assertEqual(generate_mock.call_count, 0)
-
-            app.button(key="create_workspace__open_editor").click().run(
-                timeout=10
-            )
-            self.assertFalse(list(app.exception))
-            self.assertEqual(
-                app.session_state["writing_mode"],
-                "写英文邮件",
-            )
-            self.assertIsNotNone(app.button(key="legacy__generate_submit"))
+            self.assertIsNotNone(app.button(key="compose__task__supplier_quotation"))
+            self.assertIsNotNone(app.button(key="compose__task__supplier_delivery"))
             self.assertEqual(generate_mock.call_count, 0)
 
     def test_improve_workspace_is_presentation_only_and_opens_existing_editor(
@@ -145,14 +131,14 @@ class StreamlitAppTests(unittest.TestCase):
             self.assertFalse(list(app.exception))
             self.assertEqual(
                 app.session_state["system__active_page"],
-                "supplier_workspace",
+                "create_workspace",
             )
             self.assertIsNotNone(
                 app.button(key="compose__task__supplier_quotation")
             )
             self.assertEqual(generate_mock.call_count, 0)
 
-            app.button(key="compose__return_home").click().run(timeout=10)
+            app.button(key="workspace__create__return_home").click().run(timeout=10)
             self.assertIsNotNone(app.button(key="home__action__reply"))
 
     def test_reply_home_entry_opens_real_analysis_workspace(self) -> None:
@@ -911,7 +897,7 @@ class StreamlitAppTests(unittest.TestCase):
         )
         self.complete_quotation_questions(app)
         rendered = "\n".join(item.value for item in app.markdown)
-        self.assertIn("本次商务沟通信息", rendered)
+        self.assertIn("邮件信息确认", rendered)
         self.assertIn("ABC Components", rendered)
         self.assertIn("Control panels", rendered)
         self.assertNotIn("项目名称</div>", rendered)
@@ -951,8 +937,34 @@ class StreamlitAppTests(unittest.TestCase):
                 app.text_input(key="compose__result_subject").value,
                 "Quotation Follow-up",
             )
+            self.assertIsNotNone(app.button(key="compose__regenerate"))
+            self.assertIsNotNone(app.button(key="compose__edit_information"))
             app.run(timeout=10)
             self.assertEqual(generate_mock.call_count, 1)
+
+    def test_create_result_returns_to_review_with_saved_advanced_details(self) -> None:
+        app = self.create_supplier_workflow()
+        app.button(key="compose__task__supplier_quotation").click().run(timeout=10)
+        mocked = EmailResult(subject="Quotation Follow-up", body="Please reply.")
+        with patch(
+            "ai_service.DeepSeekEmailService.generate_scenario_email",
+            return_value=mocked,
+        ):
+            self.complete_quotation_questions(app)
+            app.session_state["compose__tone_choice"] = "友好 · Friendly"
+            app.session_state["compose__country_region"] = "中国 / China"
+            app.session_state["compose__recipient"] = "Supplier Team"
+            app.session_state["shared_sender_name"] = "David Chen"
+            app.button(key="compose__generate").click().run(timeout=10)
+            app.button(key="compose__edit_information").click().run(timeout=10)
+            self.assertEqual(
+                app.session_state["compose__ui_generation_context"]["tone"],
+                "Friendly",
+            )
+            self.assertIn(
+                "高级选项",
+                "\n".join(item.label for item in app.expander),
+            )
 
     def test_supplier_review_edit_can_generate_updated_email(self) -> None:
         app = self.create_supplier_workflow()

@@ -959,6 +959,61 @@ def inject_workspace_home_styles() -> None:
         .st-key-home__workspace .la-home-copy { font-size:.92rem; }
         }
 
+        /* Create Email workspace: scenario, guided facts, review and result. */
+        .st-key-workspace__create .la-guided-question__progress {
+            margin:0 0 var(--la-space-3); color:var(--la-primary); font-size:.7rem;
+            font-weight:760; letter-spacing:.09em; text-transform:uppercase;
+        }
+        .st-key-workspace__create .la-guided-question__title {
+            margin:0; color:var(--la-ink); font-size:clamp(1.35rem,3vw,1.75rem);
+            letter-spacing:-.03em; line-height:1.25;
+        }
+        .st-key-workspace__create .la-guided-question__helper {
+            margin:var(--la-space-2) 0 var(--la-space-5); color:var(--la-muted);
+            font-size:.86rem; line-height:1.6;
+        }
+        .st-key-workspace__create [class*="st-key-compose__task__"] > button,
+        .st-key-workspace__create [class*="st-key-compose__coming_soon__"] > button {
+            min-height:7.5rem; margin-bottom:var(--la-space-3); padding:var(--la-space-4);
+            border:1px solid var(--la-border); border-radius:var(--la-radius-card);
+            background:var(--la-surface); color:var(--la-ink); box-shadow:var(--la-shadow-sm);
+            text-align:left; white-space:pre-line;
+        }
+        .st-key-workspace__create [class*="st-key-compose__task__"] > button:hover {
+            border-color:#93c5fd; background:var(--la-info-bg); box-shadow:var(--la-shadow-md);
+        }
+        .st-key-workspace__create [class*="st-key-compose__task__"] button p,
+        .st-key-workspace__create [class*="st-key-compose__coming_soon__"] button p {
+            text-align:left; line-height:1.55;
+        }
+        .st-key-workspace__create [class*="st-key-compose__question_card"] {
+            margin:var(--la-space-3) 0; padding:var(--la-space-6); border:1px solid var(--la-border);
+            border-radius:var(--la-radius-card); background:var(--la-surface); box-shadow:var(--la-shadow-sm);
+        }
+        .st-key-workspace__create [class*="st-key-compose__summary_card"] {
+            margin:var(--la-space-3) 0; padding:var(--la-space-2) var(--la-space-5);
+            border:1px solid var(--la-border); border-radius:var(--la-radius-card); background:var(--la-surface);
+            box-shadow:var(--la-shadow-sm);
+        }
+        .st-key-workspace__create .la-review-item {
+            padding:var(--la-space-3) 0; border-bottom:1px solid var(--la-border);
+        }
+        .st-key-workspace__create .la-review-item span {
+            display:block; margin-bottom:var(--la-space-1); color:var(--la-muted); font-size:.72rem; font-weight:700;
+        }
+        .st-key-workspace__create .la-review-item strong {
+            display:block; color:var(--la-ink); font-size:.88rem; font-weight:650; line-height:1.55;
+        }
+        .st-key-workspace__create .la-email-subject__label,
+        .st-key-workspace__create .la-email-editor__label { margin-top:var(--la-space-5); }
+        .st-key-workspace__create .la-create-status {
+            margin:var(--la-space-3) 0; color:var(--la-muted); font-size:.75rem; line-height:1.55;
+        }
+        @media (max-width:768px) {
+            .st-key-workspace__create [class*="st-key-compose__question_card"] { padding:var(--la-space-4); }
+            .st-key-workspace__create [class*="st-key-compose__task__"] > button { min-height:6.4rem; }
+        }
+
         /* Reply decision, generation and send-ready workspace surfaces. */
         .st-key-workspace__reply .la-decision-focus {
             margin:var(--la-space-3) 0 var(--la-space-5);
