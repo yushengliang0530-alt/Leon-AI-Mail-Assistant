@@ -27,6 +27,12 @@ from services.preflight_service import (
     preflight_source_digest,
     report_from_items,
 )
+from product_identity import APP_VERSION_LABEL
+from ui.components import (
+    WorkflowStep,
+    render_action_bar,
+    render_workspace_shell,
+)
 from ui.pages.reply_decision import (
     render_reply_decisions,
     render_reply_summary,
@@ -52,62 +58,54 @@ URGENCY_LABELS = {
 RISK_LABELS = {"low": "低", "medium": "中", "high": "高"}
 
 
-def _inject_styles() -> None:
+REPLY_WORKFLOW = (
+    ("email", "Email", "Incoming email"),
+    ("analysis", "Analysis", "Understand the request"),
+    ("decision", "Decision", "Confirm your position"),
+    ("generate", "Generate", "Create the reply"),
+    ("check", "Check", "Review before sending"),
+)
+
+
+def _inject_reply_content_styles() -> None:
     st.markdown(
         """
         <style>
-        .st-key-reply__workspace {--reply-ink:#13223a;--reply-blue:#2858c7;
-          --reply-line:#d9e1ec;--reply-muted:#66758a;}
-        .st-key-reply__workspace .reply-header{display:flex;justify-content:
-          space-between;gap:1rem;align-items:flex-start;margin:1.2rem 0 1.35rem;}
-        .st-key-reply__workspace .reply-kicker{color:var(--reply-blue);
-          font-size:.7rem;font-weight:760;letter-spacing:.11em;}
-        .st-key-reply__workspace h1{margin:.35rem 0 .25rem;color:var(--reply-ink);
-          font-size:2rem;letter-spacing:-.035em;}
-        .st-key-reply__workspace .reply-sub{color:var(--reply-muted);
-          font-size:.88rem;line-height:1.6;}
-        .st-key-reply__workspace .reply-task{padding:.4rem .7rem;border:1px
-          solid #c7d3e6;border-radius:999px;background:#f8faff;color:#425978;
-          font-size:.72rem;font-weight:700;white-space:nowrap;}
-        .st-key-reply__workspace .reply-progress{display:grid;
-          grid-template-columns:repeat(5,1fr);gap:.4rem;margin-bottom:1.35rem;}
-        .st-key-reply__workspace .reply-progress span{padding:.62rem .75rem;
-          border-bottom:2px solid var(--reply-line);color:#8995a5;font-size:.76rem;}
-        .st-key-reply__workspace .reply-progress .active{border-color:
-          var(--reply-blue);color:var(--reply-blue);font-weight:750;}
-        .st-key-reply__workspace .reply-card{padding:1rem 1.05rem;margin:.7rem 0;
-          border:1px solid var(--reply-line);border-radius:.85rem;background:#fff;
-          box-shadow:0 7px 24px rgba(28,48,79,.04);}
-        .st-key-reply__workspace .reply-card h3{margin:0 0 .5rem;color:
-          var(--reply-ink);font-size:.9rem;}
-        .st-key-reply__workspace .reply-card p,.st-key-reply__workspace
-          .reply-card li{color:#4e6079;font-size:.82rem;line-height:1.6;}
-        .st-key-reply__workspace .reply-meta{color:#8794a6;font-size:.72rem;}
-        @media(max-width:640px){.st-key-reply__workspace .reply-header{
-          flex-direction:column}.st-key-reply__workspace h1{font-size:1.7rem}
-          .st-key-reply__workspace div[data-testid="stHorizontalBlock"]{
-          flex-direction:column}.st-key-reply__workspace div[data-testid="column"]{
-          width:100%!important;flex:1 1 100%!important}
-          .st-key-reply__workspace .reply-progress span{font-size:.64rem;
-          padding:.48rem .25rem}}
+        .st-key-workspace__reply .reply-card{padding:var(--la-space-4);
+          margin:var(--la-space-3) 0;border:1px solid var(--la-border);
+          border-radius:var(--la-radius-card);background:var(--la-surface);
+          box-shadow:var(--la-shadow-sm);}
+        .st-key-workspace__reply .reply-card h3{margin:0 0 var(--la-space-2);
+          color:var(--la-ink);font-size:.9rem;}
+        .st-key-workspace__reply .reply-card p,.st-key-workspace__reply
+          .reply-card li{color:var(--la-text);font-size:.82rem;line-height:1.6;}
+        .st-key-workspace__reply .reply-meta{color:var(--la-muted);font-size:.72rem;}
+        @media(max-width:640px){
+          .st-key-workspace__reply .la-workflow-nav{display:none}
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
 
 
-def _progress(step: int) -> None:
-    st.markdown(
-        f"""
-        <div class="reply-progress">
-          <span class="{'active' if step == 1 else ''}">01　分析来信</span>
-          <span class="{'active' if step == 2 else ''}">02　查看分析</span>
-          <span class="{'active' if step == 3 else ''}">03　确认立场</span>
-          <span class="{'active' if step == 4 else ''}">04　生成回复</span>
-          <span class="{'active' if step == 5 else ''}">05　发送前检查</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
+def _reply_workflow_steps(step: int) -> tuple[WorkflowStep, ...]:
+    """Project Reply state onto the shared display-only workflow navigation."""
+    current_step = max(1, min(len(REPLY_WORKFLOW), step))
+    return tuple(
+        WorkflowStep(
+            key=key,
+            label=label,
+            helper=helper,
+            state=(
+                "complete"
+                if index < current_step
+                else "current"
+                if index == current_step
+                else "upcoming"
+            ),
+        )
+        for index, (key, label, helper) in enumerate(REPLY_WORKFLOW, start=1)
     )
 
 
@@ -388,39 +386,24 @@ def render_reply_workspace(
     generation_service: ReplyGenerationService,
     preflight_service: PreflightService,
     render_privacy_notice: Callable[[], None] | None = None,
+    service_status: str = "已配置",
 ) -> None:
-    _inject_styles()
+    """Adapt the existing Reply flow to the shared V2.1 workspace shell."""
+    _inject_reply_content_styles()
     step = int(st.session_state.get("reply__step", 1))
-    with st.container(key="reply__workspace"):
-        st.button(
-            "← 返回工作台",
-            key="reply__return_home",
-            on_click=return_to_home,
-        )
-        st.markdown(
-            f"""
-            <div class="reply-header">
-              <div>
-                <div class="reply-kicker">LEON AI · REPLY WORKSPACE</div>
-                <h1>回复收到的邮件</h1>
-                <div class="reply-sub">Reply Workspace<br>
-                  先理解来信，再逐项确认您的处理立场。</div>
-              </div>
-              <div class="reply-task">回复收到的邮件 · {step}/5</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        _progress(step)
-        analysis = st.session_state.get("reply__analysis")
-        digest_valid = (
-            analysis is not None
-            and st.session_state.get("reply__analysis_digest")
-            == st.session_state.get("reply__source_digest")
-        )
+    analysis = st.session_state.get("reply__analysis")
+    digest_valid = (
+        analysis is not None
+        and st.session_state.get("reply__analysis_digest")
+        == st.session_state.get("reply__source_digest")
+    )
+    if not digest_valid:
+        st.session_state["reply__step"] = 1
+        step = 1
+
+    def render_task() -> None:
         items = tuple(st.session_state.get("reply__normalized_items", ()))
         if not digest_valid:
-            st.session_state["reply__step"] = 1
             _render_input(analysis_service)
         elif step == 3 and st.session_state.get("reply__decision_summary") is None:
             render_reply_decisions(items)
@@ -437,6 +420,25 @@ def render_reply_workspace(
         if render_privacy_notice:
             with st.expander("隐私与测试说明", expanded=False):
                 render_privacy_notice()
+        render_action_bar(
+            primary_label="返回首页",
+            primary_key="reply__return_home",
+            on_primary=return_to_home,
+        )
+
+    render_workspace_shell(
+        workspace_key="reply",
+        version=APP_VERSION_LABEL,
+        service_status=service_status,
+        title="Reply Email Workspace",
+        description=(
+            "Analyze incoming emails and create professional business replies."
+        ),
+        eyebrow="LEON AI · 回复收到的邮件",
+        steps=_reply_workflow_steps(step),
+        render_task=render_task,
+        on_return_home=return_to_home,
+    )
 
 
 def _email_digest(subject: str, body: str) -> str:

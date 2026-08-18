@@ -162,10 +162,37 @@ class StreamlitAppTests(unittest.TestCase):
         self.assertFalse(list(app.exception))
         rendered = "\n".join(item.value for item in app.markdown)
         self.assertIn("回复收到的邮件", rendered)
+        self.assertIn("Reply Email Workspace", rendered)
+        self.assertIn("Analyze incoming emails and create professional business replies.", rendered)
+        for label in ("Email", "Analysis", "Decision", "Generate", "Check"):
+            self.assertIn(label, rendered)
         self.assertIsNotNone(
             app.text_area(key="reply__original_email")
         )
+        self.assertIsNotNone(
+            app.button(key="workspace__reply__return_home")
+        )
         self.assertFalse(any("Phase 3" in item.value for item in app.info))
+
+    def test_reply_workspace_return_home_preserves_reply_input_without_ai(self) -> None:
+        app = self.create_home()
+        with patch(
+            "ai_service.DeepSeekEmailService.analyze_incoming_email",
+        ) as analyze_mock:
+            app.button(key="home__action__reply").click().run(timeout=10)
+            app.text_area(key="reply__original_email").set_value(
+                "Please provide the updated delivery plan."
+            ).run(timeout=10)
+            app.button(key="workspace__reply__return_home").click().run(
+                timeout=10
+            )
+            self.assertFalse(list(app.exception))
+            self.assertIsNotNone(app.button(key="home__action__reply"))
+            self.assertEqual(
+                app.session_state["reply__original_email"],
+                "Please provide the updated delivery plan.",
+            )
+            self.assertEqual(analyze_mock.call_count, 0)
 
     def test_reply_empty_and_high_risk_input_do_not_call_ai(self) -> None:
         app = self.create_home()

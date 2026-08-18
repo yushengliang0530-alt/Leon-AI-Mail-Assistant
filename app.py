@@ -975,6 +975,7 @@ if current_active_page == "reply_workspace":
         ),
         generation_service=ReplyGenerationService(reply_backend),
         preflight_service=PreflightService(reply_backend),
+        service_status=home_service_status,
     )
     st.stop()
 
