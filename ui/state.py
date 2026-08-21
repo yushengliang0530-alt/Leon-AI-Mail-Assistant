@@ -129,6 +129,7 @@ REPLY_DEFAULTS = {
     "reply__generation_digest": "",
     "reply__coverage_digest": "",
     "reply__generation_status": "idle",
+    "reply__generation_pending": False,
     "reply__coverage_status": "idle",
     "reply__generation_error": "",
     "reply__coverage_error": "",
@@ -327,6 +328,7 @@ def _clear_reply_generation_values() -> None:
     ):
         st.session_state[key] = ""
     st.session_state["reply__generation_status"] = "idle"
+    st.session_state["reply__generation_pending"] = False
     st.session_state["reply__coverage_status"] = "idle"
     reset_preflight_state()
 

@@ -444,12 +444,19 @@ def render_reply_workspace(
             if render_reply_summary(items):
                 _generate_and_check(generation_service, analysis, items)
         elif step == 4:
+            # Regeneration is requested from an already-rendered email editor.
+            # Start it on a fresh rerun so the service can safely replace the
+            # editor-backed subject/body state before those widgets exist.
+            if st.session_state.get("reply__generation_pending", False):
+                st.session_state["reply__generation_pending"] = False
+                _generate_and_check(generation_service, analysis, items)
             item_titles = {item.item_id: item.description for item in items}
             action = render_reply_result(item_titles=item_titles)
             if action == "recheck":
                 _run_coverage(generation_service, items)
             elif action == "regenerate":
-                _generate_and_check(generation_service, analysis, items)
+                st.session_state["reply__generation_pending"] = True
+                st.rerun()
             elif action == "back":
                 return_to_reply_decisions()
                 st.rerun()

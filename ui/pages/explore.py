@@ -6,7 +6,7 @@ import html
 import streamlit as st
 
 from product_identity import APP_VERSION_LABEL
-from ui.components import render_global_header, render_page_header
+from ui.components import render_global_header, render_html, render_page_header
 
 
 CATALOG_ITEMS = (
@@ -80,7 +80,7 @@ def render_explore_more(
                     on_click=on_open_supplier,
                 )
             else:
-                st.markdown(
+                render_html(
                     f"""
                     <article class="la-explore-card" aria-label="{html.escape(item['title'])}">
                       <div>
@@ -90,6 +90,5 @@ def render_explore_more(
                       </div>
                       <span class="la-explore-card__status">规划中</span>
                     </article>
-                    """,
-                    unsafe_allow_html=True,
+                    """
                 )

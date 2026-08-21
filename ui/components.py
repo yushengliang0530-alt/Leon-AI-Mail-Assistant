@@ -11,6 +11,17 @@ import json
 import streamlit as st
 
 
+def render_html(markup: str) -> None:
+    """Render trusted, escaped component markup without Markdown parsing.
+
+    Streamlit's Markdown renderer may present nested structural HTML as literal
+    source in some runtime versions. Shared components build the markup and
+    escape variable text before passing it here; ``st.html`` keeps rendering
+    behaviour deterministic without enabling JavaScript.
+    """
+    st.html(markup)
+
+
 @dataclass(frozen=True)
 class TaskCard:
     """A direct, stable-key task entry for the workspace home."""
@@ -136,7 +147,7 @@ class PreflightPresentationItem:
 
 def render_global_header(*, version: str, service_status: str) -> None:
     """Render the compact product header shared by every V2.1 page."""
-    st.markdown(
+    render_html(
         f"""
         <div class="la-global-header">
           <div class="la-brand">
@@ -151,8 +162,7 @@ def render_global_header(*, version: str, service_status: str) -> None:
             <span>{html.escape(version)}</span>
           </div>
         </div>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
@@ -186,7 +196,7 @@ def render_workspace_header(
         if step_label
         else ""
     )
-    st.markdown(
+    render_html(
         f"""
         <section class="la-workspace-header">
           <div class="la-workspace-header__lead">
@@ -199,8 +209,7 @@ def render_workspace_header(
           </div>
           {step_html}
         </section>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
@@ -231,7 +240,7 @@ def render_workflow_nav(steps: tuple[WorkflowStep, ...]) -> None:
     navigation markup from being presented as literal text in a workspace.
     ``unsafe_allow_javascript`` remains at its secure default (``False``).
     """
-    st.html(_workflow_nav_html(steps))
+    render_html(_workflow_nav_html(steps))
 
 
 def _workflow_nav_html(steps: tuple[WorkflowStep, ...]) -> str:
@@ -308,15 +317,14 @@ def render_section_header(title: str, subtitle: str = "") -> None:
         if subtitle
         else ""
     )
-    st.markdown(
+    render_html(
         f"""
         <div class="la-section-header">
           <span class="la-section-header__line" aria-hidden="true"></span>
           <span class="la-section-header__title">{html.escape(title)}</span>
           {subtitle_html}
         </div>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
@@ -374,13 +382,12 @@ def render_guided_question_header(
 ) -> None:
     """Render the reusable heading for a one-question-at-a-time task canvas."""
     requirement = "必填" if required else "可选"
-    st.markdown(
+    render_html(
         f"""
         <div class="la-guided-question__progress">问题 {current} / {total} · {requirement}</div>
         <h2 class="la-guided-question__title">{html.escape(title)}</h2>
         <p class="la-guided-question__helper">{html.escape(helper)}</p>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
@@ -395,14 +402,13 @@ def render_review_items(
         for item in items:
             content, action = st.columns((5, 1), gap="small")
             with content:
-                st.markdown(
+                render_html(
                     f"""
                     <article class="la-review-item">
                       <span>{html.escape(item.label)}</span>
                       <strong>{html.escape(item.value)}</strong>
                     </article>
-                    """,
-                    unsafe_allow_html=True,
+                    """
                 )
             with action:
                 if secondary_action_button(
@@ -447,7 +453,7 @@ def render_before_after_panel(
         with st.container(key="improve__before_panel"):
             st.markdown("#### 原始版本")
             st.caption("Original draft · 只读参考")
-            st.markdown('<div class="la-email-subject__label">Subject</div>', unsafe_allow_html=True)
+            render_html('<div class="la-email-subject__label">Subject</div>')
             st.text_input(
                 "原始主题",
                 value=original_subject or "未提供主题",
@@ -455,7 +461,7 @@ def render_before_after_panel(
                 key="improve__before_subject",
                 label_visibility="collapsed",
             )
-            st.markdown('<div class="la-email-editor__label">Email Body</div>', unsafe_allow_html=True)
+            render_html('<div class="la-email-editor__label">Email Body</div>')
             st.text_area(
                 "原始正文",
                 value=original_body,
@@ -475,70 +481,64 @@ def render_optimization_summary(items: tuple[str, ...]) -> None:
     """Keep the outcome explanation short and tied to existing result analysis."""
     if not items:
         return
-    st.markdown(
+    render_html(
         '<ul class="la-optimization-summary">'
         + "".join(f"<li>{html.escape(item)}</li>" for item in items[:4])
-        + "</ul>",
-        unsafe_allow_html=True,
+        + "</ul>"
     )
 
 
 def render_status_badge(label: str, kind: str = "info") -> None:
     allowed = {"success", "info", "warning", "risk"}
     safe_kind = kind if kind in allowed else "info"
-    st.markdown(
-        f'<span class="la-status-badge la-status-badge--{safe_kind}">{html.escape(label)}</span>',
-        unsafe_allow_html=True,
+    render_html(
+        f'<span class="la-status-badge la-status-badge--{safe_kind}">{html.escape(label)}</span>'
     )
 
 
 def render_summary_card(title: str, body: str) -> None:
-    st.markdown(
+    render_html(
         f"""
         <section class="la-summary-card">
           <div class="la-summary-card__title">{html.escape(title)}</div>
           <div class="la-summary-card__body">{html.escape(body)}</div>
         </section>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
 def render_notice_bar(title: str, body: str, *, icon: str = "i") -> None:
-    st.markdown(
+    render_html(
         f"""
         <aside class="la-notice">
           <span class="la-notice__icon" aria-hidden="true">{html.escape(icon)}</span>
           <span><strong>{html.escape(title)}</strong>：{html.escape(body)}</span>
         </aside>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
 def render_empty_state(title: str, helper: str) -> None:
-    st.markdown(
+    render_html(
         f"""
         <section class="la-empty-state">
           <span class="la-empty-state__icon" aria-hidden="true">·</span>
           <strong>{html.escape(title)}</strong>
           <span>{html.escape(helper)}</span>
         </section>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
 def render_loading_state(title: str, helper: str) -> None:
-    st.markdown(
+    render_html(
         f"""
         <section class="la-loading-state" aria-live="polite">
           <span class="la-loading-state__icon" aria-hidden="true">···</span>
           <strong>{html.escape(title)}</strong>
           <span>{html.escape(helper)}</span>
         </section>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
@@ -552,7 +552,7 @@ def render_analysis_summary_panel(
     """Present the one-screen summary for an incoming-email analysis."""
     allowed = {"success", "info", "warning", "risk"}
     safe_kind = urgency_kind if urgency_kind in allowed else "info"
-    st.markdown(
+    render_html(
         f"""
         <section class="la-analysis-summary">
           <div class="la-analysis-summary__topline">
@@ -563,8 +563,7 @@ def render_analysis_summary_panel(
           <p>{html.escape(summary)}</p>
           <div class="la-analysis-summary__intent"><strong>对方意图</strong>{html.escape(sender_intent)}</div>
         </section>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
@@ -579,9 +578,8 @@ def render_analysis_action_cards(
         _analysis_action_card(item, index=index, variant=safe_variant)
         for index, item in enumerate(items, start=1)
     )
-    st.markdown(
-        f'<div class="la-analysis-actions la-analysis-actions--{safe_variant}">{cards}</div>',
-        unsafe_allow_html=True,
+    render_html(
+        f'<div class="la-analysis-actions la-analysis-actions--{safe_variant}">{cards}</div>'
     )
 
 
@@ -629,9 +627,8 @@ def render_analysis_date_cards(items: tuple[AnalysisDate, ...]) -> None:
         """
         for item in items
     )
-    st.markdown(
-        f'<div class="la-analysis-date-grid">{cards}</div>',
-        unsafe_allow_html=True,
+    render_html(
+        f'<div class="la-analysis-date-grid">{cards}</div>'
     )
 
 
@@ -647,7 +644,7 @@ def render_analysis_notices(items: tuple[AnalysisNotice, ...]) -> None:
         """
         for item in items
     )
-    st.markdown(notices, unsafe_allow_html=True)
+    render_html(notices)
 
 
 def render_strategy_list(
@@ -658,19 +655,17 @@ def render_strategy_list(
     """Keep advice concise first, with optional details kept out of the way."""
     visible = items[:initial_limit]
     remaining = items[initial_limit:]
-    st.markdown(
+    render_html(
         '<ol class="la-strategy-list">'
         + "".join(f"<li>{html.escape(item)}</li>" for item in visible)
-        + "</ol>",
-        unsafe_allow_html=True,
+        + "</ol>"
     )
     if remaining:
         with st.expander("查看更多建议", expanded=False):
-            st.markdown(
+            render_html(
                 '<ol class="la-strategy-list la-strategy-list--more">'
                 + "".join(f"<li>{html.escape(item)}</li>" for item in remaining)
-                + "</ol>",
-                unsafe_allow_html=True,
+                + "</ol>"
             )
 
 
@@ -689,7 +684,7 @@ def render_decision_focus_card(
         metadata.append(f"原要求截止时间：{deadline}")
     if uncertain:
         metadata.append("信息待确认")
-    st.markdown(
+    render_html(
         f"""
         <section class="la-decision-focus">
           <div class="la-decision-focus__step">事项 {index} / {total}</div>
@@ -697,8 +692,7 @@ def render_decision_focus_card(
           <h2>{html.escape(title)}</h2>
           <div class="la-decision-focus__meta">{html.escape(' · '.join(metadata))}</div>
         </section>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
@@ -758,9 +752,8 @@ def render_decision_summary_cards(
         """
         for entry in entries
     )
-    st.markdown(
-        f'<div class="la-decision-summary-cards">{cards}</div>',
-        unsafe_allow_html=True,
+    render_html(
+        f'<div class="la-decision-summary-cards">{cards}</div>'
     )
 
 
@@ -771,7 +764,7 @@ def render_email_subject_card(
 ) -> str:
     """Render the editable subject as a dedicated, compact email surface."""
     with st.container(key=f"email_subject__{value_key}"):
-        st.markdown('<div class="la-email-subject__label">Subject</div>', unsafe_allow_html=True)
+        render_html('<div class="la-email-subject__label">Subject</div>')
         value = st.text_input(
             "邮件主题",
             key=value_key,
@@ -793,10 +786,7 @@ def render_email_editor(
 ) -> str:
     """Render the editable body in a roomy email-oriented writing surface."""
     with st.container(key=f"email_editor__{value_key}"):
-        st.markdown(
-            '<div class="la-email-editor__label">Email Body</div>',
-            unsafe_allow_html=True,
-        )
+        render_html('<div class="la-email-editor__label">Email Body</div>')
         value = st.text_area(
             "邮件正文",
             key=value_key,
@@ -858,15 +848,14 @@ def render_coverage_summary(
         parts.append(f"{partial_count} 项部分覆盖")
     if not_addressed_count:
         parts.append(f"{not_addressed_count} 项暂未回复")
-    st.markdown(
+    render_html(
         f"""
         <section class="la-coverage-summary">
           <div class="la-coverage-summary__label">回复完整性</div>
           <strong>{html.escape(' · '.join(parts))}</strong>
           <span>共 {total_count} 个需要处理的事项</span>
         </section>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
@@ -881,7 +870,7 @@ def render_coverage_items(items: tuple[CoveragePresentationItem, ...]) -> None:
         """
         for item in items
     )
-    st.markdown(f'<div class="la-coverage-items">{cards}</div>', unsafe_allow_html=True)
+    render_html(f'<div class="la-coverage-items">{cards}</div>')
 
 
 def render_preflight_summary(*, status: str, summary: str) -> None:
@@ -891,14 +880,13 @@ def render_preflight_summary(*, status: str, summary: str) -> None:
         "WARNING": ("存在需要重点确认的内容", "risk"),
     }
     title, kind = presentation.get(status, presentation["CHECK"])
-    st.markdown(
+    render_html(
         f"""
         <section class="la-preflight-summary la-preflight-summary--{kind}">
           <span class="la-status-badge la-status-badge--{kind}">{html.escape(title)}</span>
           <p>{html.escape(summary)}</p>
         </section>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
@@ -919,33 +907,31 @@ def render_preflight_items(
         """
         for item in items
     )
-    st.markdown(f'<div class="la-preflight-items">{rows}</div>', unsafe_allow_html=True)
+    render_html(f'<div class="la-preflight-items">{rows}</div>')
 
 
 def render_completion_panel() -> None:
     """Make the end of the workflow explicit without implying send capability."""
-    st.markdown(
+    render_html(
         """
         <section class="la-completion-panel">
           <div class="la-completion-panel__eyebrow">REPLY READY</div>
           <h2>邮件已准备完成</h2>
           <p>Leon AI 已完成内容生成、回复完整性和发送前检查。请在 Outlook 或 Gmail 中最终确认后发送。</p>
         </section>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 
 def render_workspace_empty_state(title: str, helper: str) -> None:
     """Present an intentionally empty task canvas inside the workspace shell."""
-    st.markdown(
+    render_html(
         f"""
         <section class="la-workspace-empty-state">
           <strong>{html.escape(title)}</strong>
           <span>{html.escape(helper)}</span>
         </section>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
 

@@ -27,6 +27,7 @@ from ui.components import (
     render_email_subject_card,
     render_guided_action_bar,
     render_guided_question_header,
+    render_html,
     render_loading_state,
     render_review_items,
     render_scenario_cards,
@@ -525,7 +526,7 @@ def _render_step_four(
         status_parts.append(f"本次生成耗时：{duration:.2f} 秒")
     if isinstance(tokens, int):
         status_parts.append(f"本次用量：{tokens} tokens")
-    st.markdown(f'<div class="la-create-status">{" · ".join(status_parts)}</div>', unsafe_allow_html=True)
+    render_html(f'<div class="la-create-status">{" · ".join(status_parts)}</div>')
 
     analysis = st.session_state.get("compose__analysis")
     if not isinstance(analysis, CommunicationAnalysis):

@@ -43,6 +43,7 @@ from ui.pages.explore import render_explore_more
 from ui.pages.home import render_home
 from ui.pages.improve import render_improve_workspace
 from ui.pages.reply import render_reply_workspace
+from ui.components import render_html
 from ui.state import (
     get_active_page,
     initialize_home_state,
@@ -61,7 +62,7 @@ st.set_page_config(
 
 inject_global_styles()
 
-st.markdown(
+render_html(
     """
     <style>
     :root {
@@ -479,8 +480,7 @@ st.markdown(
         }
     }
     </style>
-    """,
-    unsafe_allow_html=True,
+    """
 )
 
 
@@ -520,12 +520,11 @@ def field_label(
     status: str = "",
 ) -> None:
     status_html = f'<span class="status">{html.escape(status)}</span>' if status else ""
-    st.markdown(
+    render_html(
         (
             f'<div class="field-label">{html.escape(chinese)}{status_html}'
             f'<span class="en">{html.escape(english)}</span></div>'
-        ),
-        unsafe_allow_html=True,
+        )
     )
 
 
@@ -702,7 +701,7 @@ def localization_context(guidance: LocalizationGuidance) -> str:
 
 
 def render_communication_analysis(analysis: CommunicationAnalysis) -> None:
-    st.markdown(
+    render_html(
         """
         <div class="result-wrap">
             <div class="section-heading">
@@ -710,8 +709,7 @@ def render_communication_analysis(analysis: CommunicationAnalysis) -> None:
                 <span>辅助提示 · 人工确认</span>
             </div>
         </div>
-        """,
-        unsafe_allow_html=True,
+        """
     )
     rows = (
         ("沟通目的", analysis.purpose),
@@ -731,7 +729,7 @@ def render_communication_analysis(analysis: CommunicationAnalysis) -> None:
         )
         for label, value in rows
     )
-    st.markdown(f'<div class="analysis-grid">{cards}</div>', unsafe_allow_html=True)
+    render_html(f'<div class="analysis-grid">{cards}</div>')
     if analysis.improvement_suggestions:
         st.markdown("**改进建议**")
         for index, suggestion in enumerate(
@@ -816,7 +814,7 @@ if "access_code_error" not in st.session_state:
     st.session_state.access_code_error = False
 
 if app_access_code and not st.session_state.access_granted:
-    st.markdown(
+    render_html(
         """
         <div class="brand-row">
             <div class="brand-mark">LA</div>
@@ -827,8 +825,7 @@ if app_access_code and not st.session_state.access_granted:
             <h1>Leon AI 内部测试版</h1>
             <p>本版本目前仅面向受邀测试用户，请输入访问码继续。</p>
         </div>
-        """,
-        unsafe_allow_html=True,
+        """
     )
     st.text_input(
         "测试访问码",
@@ -987,7 +984,7 @@ legacy_workspace_label = (
 st.caption(legacy_workspace_label)
 
 
-st.markdown(
+render_html(
     f"""
     <div class="brand-row">
         <div class="brand-mark">LA</div>
@@ -1001,11 +998,10 @@ st.markdown(
             <span class="en-subtitle">{PRODUCT_NAME_EN}<br>Create safer, clearer and more professional business communication.</span>
         </p>
     </div>
-    """,
-    unsafe_allow_html=True,
+    """
 )
 
-st.markdown(
+render_html(
     """
     <div class="section-heading">
         <h2>核心功能 <small style="color:#8a97a8;font-size:.7rem;font-weight:500">Core Capabilities</small></h2>
@@ -1016,8 +1012,7 @@ st.markdown(
         <div class="capability-card"><strong>沟通风险分析</strong><span>提示可能存在的敏感信息、承诺风险和表达歧义。</span></div>
         <div class="capability-card"><strong>本地化沟通建议</strong><span>提供称谓、礼貌程度和跨文化表达辅助建议。</span></div>
     </div>
-    """,
-    unsafe_allow_html=True,
+    """
 )
 st.info(
     "安全提醒：请勿输入密码、身份证件、银行账号、API Key 或其他敏感凭证。"
@@ -1041,7 +1036,7 @@ if active_page == "写英文邮件":
             "generate_tone_choice",
         ]
     )
-    st.markdown(
+    render_html(
         """
         <div class="mode-intro">
             根据中文需求生成完整的英文商务邮件。
@@ -1051,8 +1046,7 @@ if active_page == "写英文邮件":
             <h2>写英文商务邮件</h2>
             <span>标注“必填”的内容不可为空</span>
         </div>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
     country_region, custom_region = region_selector("generate")
@@ -1089,12 +1083,11 @@ if active_page == "写英文邮件":
             label_visibility="collapsed",
         )
         tone, tone_help = GENERATE_TONES[tone_choice]
-        st.markdown(
+        render_html(
             (
                 f'<div class="tone-note">{html.escape(tone_help)}'
                 f'<span class="en">{html.escape(tone)}</span></div>'
-            ),
-            unsafe_allow_html=True,
+            )
         )
         sender_name, job_title, company, contact_information = sender_fields()
         submitted = st.form_submit_button(
@@ -1104,10 +1097,7 @@ if active_page == "写英文邮件":
             use_container_width=True,
             disabled=st.session_state.request_in_progress,
         )
-        st.markdown(
-            '<div class="button-helper">Generate Email</div>',
-            unsafe_allow_html=True,
-        )
+        render_html('<div class="button-helper">Generate Email</div>')
 
     risk_assessment = analyze_content_risk(request)
     guidance = build_localization_guidance(
@@ -1195,7 +1185,7 @@ if active_page == "写英文邮件":
         if "body_editor" not in st.session_state:
             st.session_state.body_editor = st.session_state.email_body
         render_communication_analysis(st.session_state.generated_analysis)
-        st.markdown(
+        render_html(
             """
             <div class="result-wrap">
                 <div class="section-heading">
@@ -1207,8 +1197,7 @@ if active_page == "写英文邮件":
                 您可以在复制前直接修改生成结果。
                 <span class="en">You can edit the result before copying.</span>
             </div>
-            """,
-            unsafe_allow_html=True,
+            """
         )
 
         field_label("邮件主题", "Subject")
@@ -1240,14 +1229,13 @@ if active_page == "写英文邮件":
             "copy-body",
         )
     else:
-        st.markdown(
+        render_html(
             """
             <div class="empty-state">
                 生成后的英文邮件主题和正文将显示在这里。<br>
                 <span style="color:#98a3b2;font-size:.72rem">Your generated email will appear here.</span>
             </div>
-            """,
-            unsafe_allow_html=True,
+            """
         )
 else:
     restore_page_inputs(
@@ -1256,7 +1244,7 @@ else:
             "improve_tone_choice",
         ]
     )
-    st.markdown(
+    render_html(
         """
         <div class="mode-intro">
             优化已经写好的英文邮件，使表达更加专业、自然。
@@ -1266,8 +1254,7 @@ else:
             <h2>优化英文商务邮件</h2>
             <span>标注“必填”的内容不可为空</span>
         </div>
-        """,
-        unsafe_allow_html=True,
+        """
     )
 
     improve_country_region, improve_custom_region = region_selector("improve")
@@ -1290,12 +1277,11 @@ else:
             label_visibility="collapsed",
         )
         improve_tone, improve_tone_help = IMPROVE_TONES[improve_tone_choice]
-        st.markdown(
+        render_html(
             (
                 f'<div class="tone-note">{html.escape(improve_tone_help)}'
                 f'<span class="en">{html.escape(improve_tone)}</span></div>'
-            ),
-            unsafe_allow_html=True,
+            )
         )
         sender_name, job_title, company, contact_information = sender_fields()
         improve_submitted = st.form_submit_button(
@@ -1305,10 +1291,7 @@ else:
             use_container_width=True,
             disabled=st.session_state.request_in_progress,
         )
-        st.markdown(
-            '<div class="button-helper">Improve Email</div>',
-            unsafe_allow_html=True,
-        )
+        render_html('<div class="button-helper">Improve Email</div>')
 
     improve_risk_assessment = analyze_content_risk(original_email)
     improve_guidance = build_localization_guidance(
@@ -1399,7 +1382,7 @@ else:
         if "improved_body_editor" not in st.session_state:
             st.session_state.improved_body_editor = st.session_state.improved_body
         render_communication_analysis(st.session_state.improved_analysis)
-        st.markdown(
+        render_html(
             """
             <div class="result-wrap">
                 <div class="section-heading">
@@ -1411,8 +1394,7 @@ else:
                 您可以在复制前直接修改生成结果。
                 <span class="en">You can edit the result before copying.</span>
             </div>
-            """,
-            unsafe_allow_html=True,
+            """
         )
 
         field_label("邮件主题", "Subject")
@@ -1444,14 +1426,13 @@ else:
             "copy-improved-body",
         )
     else:
-        st.markdown(
+        render_html(
             """
             <div class="empty-state">
                 优化后的英文邮件主题和正文将显示在这里。<br>
                 <span style="color:#98a3b2;font-size:.72rem">Your improved email will appear here.</span>
             </div>
-            """,
-            unsafe_allow_html=True,
+            """
         )
 
 render_examples()
@@ -1500,12 +1481,11 @@ else:
     footer_english = "Powered by DeepSeek API"
     service_state = "已配置"
 
-st.markdown(
+render_html(
     (
         f'<div class="footer-note">{html.escape(footer_status)}'
         f'<span class="en">{html.escape(footer_english)}</span></div>'
-    ),
-    unsafe_allow_html=True,
+    )
 )
 
 status_rows = [
@@ -1537,11 +1517,10 @@ if st.session_state.deepseek_connected:
             f'<span class="value">{tokens} tokens</span></div>'
         )
 
-st.markdown(
+render_html(
     (
         '<div class="service-status"><div class="title">AI服务状态</div>'
         + "".join(status_rows)
         + "</div>"
-    ),
-    unsafe_allow_html=True,
+    )
 )

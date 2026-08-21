@@ -9,6 +9,7 @@ from product_identity import APP_VERSION_LABEL
 from ui.components import (
     TaskCard,
     render_global_header,
+    render_html,
     render_notice_bar,
     render_section_header,
     render_task_card,
@@ -68,7 +69,7 @@ def render_home(
             version=APP_VERSION_LABEL,
             service_status=ai_service_status,
         )
-        st.markdown(
+        render_html(
             """
             <section class="la-home-hero">
               <div class="la-home-kicker">BUSINESS COMMUNICATION WORKSPACE</div>
@@ -78,8 +79,7 @@ def render_home(
                 <span class="la-home-copy-en">Choose a task and complete it with clear, guided steps.</span>
               </p>
             </section>
-            """,
-            unsafe_allow_html=True,
+            """
         )
 
         render_section_header("核心任务", "CORE TASKS")
@@ -114,15 +114,14 @@ def render_home(
             "安全提醒",
             "请勿输入密码、银行账号、证件号码、API Key 或其他敏感凭证。发送前请人工确认事实、承诺和附件。",
         )
-        st.markdown(
+        render_html(
             f"""
             <div class="la-home-status">
               <span>AI 服务：{html.escape(ai_service_status)}</span>
               <span>运行环境：{html.escape(environment_label)}</span>
               <span>测试访问保护：{html.escape(access_protection_label)}</span>
             </div>
-            """,
-            unsafe_allow_html=True,
+            """
         )
 
         if render_additional_details:

@@ -21,6 +21,7 @@ from ui.components import (
     render_copy_button,
     render_email_editor,
     render_email_subject_card,
+    render_html,
     render_loading_state,
     render_notice_bar,
     render_optimization_option_cards,
@@ -218,14 +219,14 @@ def _render_draft_step() -> None:
     if "improve_original_email" not in st.session_state:
         st.session_state["improve_original_email"] = saved_body
     with st.container(key="improve__draft_canvas"):
-        st.markdown('<div class="la-email-subject__label">Subject · 可选</div>', unsafe_allow_html=True)
+        render_html('<div class="la-email-subject__label">Subject · 可选</div>')
         subject = st.text_input(
             "邮件主题",
             key="improve__draft_subject",
             placeholder="可选：粘贴或填写原邮件主题",
             label_visibility="collapsed",
         )
-        st.markdown('<div class="la-email-editor__label">Email Body</div>', unsafe_allow_html=True)
+        render_html('<div class="la-email-editor__label">Email Body</div>')
         draft = st.text_area(
             "邮件正文",
             key="improve_original_email",

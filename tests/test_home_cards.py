@@ -153,6 +153,42 @@ class HomeTaskCardTests(unittest.TestCase):
         self.assertNotIn("邮件 <草稿>", rendered)
         self.assertTrue(rendered.rstrip().endswith("</nav>"))
 
+    def test_structured_checklists_use_the_shared_html_renderer(self) -> None:
+        """Coverage and preflight cards must never fall back to Markdown text."""
+        coverage = (
+            components.CoveragePresentationItem(
+                title="Confirm the updated schedule",
+                status="已回复",
+                note="The reply confirms receipt of the requested update.",
+                kind="success",
+            ),
+        )
+        preflight = (
+            components.PreflightPresentationItem(
+                title="附件",
+                message="邮件提到了附件。",
+                suggestion="发送前确认附件已添加。",
+                kind="warning",
+            ),
+        )
+        with (
+            patch.object(components.st, "html") as html_renderer,
+            patch.object(components.st, "markdown") as markdown_renderer,
+        ):
+            components.render_coverage_items(coverage)
+            components.render_preflight_items(preflight, kind="warning")
+
+        self.assertEqual(html_renderer.call_count, 2)
+        rendered = "\n".join(call.args[0] for call in html_renderer.call_args_list)
+        self.assertIn('class="la-coverage-item', rendered)
+        self.assertIn('class="la-preflight-item', rendered)
+        markdown_renderer.assert_not_called()
+
+    def test_workspace_pages_do_not_render_structural_html_through_markdown(self) -> None:
+        """Prevent HTML tags from becoming visible text in any workspace view."""
+        for module in (components, home, explore, compose_supplier, improve, reply):
+            self.assertNotIn("unsafe_allow_html=True", inspect.getsource(module))
+
     def test_all_workspace_workflow_navigation_labels_render_in_shared_markup(self) -> None:
         workflows = (
             reply._reply_workflow_steps(2),
