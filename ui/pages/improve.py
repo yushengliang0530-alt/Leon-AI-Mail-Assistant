@@ -259,7 +259,7 @@ def _render_draft_step() -> None:
         st.error(st.session_state["improve__error"])
 
 
-def _render_target_step(settings: DeepSeekSettings) -> None:
+def _render_target_step(settings: DeepSeekSettings, email_service: DeepSeekEmailService) -> None:
     draft = _draft()
     if not draft:
         _set_step(1)
@@ -352,7 +352,7 @@ def _render_target_step(settings: DeepSeekSettings) -> None:
             "正在改善表达、结构和商务语气，同时保留原有事实与立场。",
         )
         with st.spinner("正在优化英文邮件，请稍候……"):
-            result = DeepSeekEmailService(settings).improve_email(
+            result = email_service.improve_email(
                 original_email=draft,
                 tone=tone,
                 country_region=(custom_region.strip() if region == "其他 / Other" else region),
@@ -391,10 +391,19 @@ def _summary_items(analysis: CommunicationAnalysis, tone_label: str) -> tuple[st
     )
 
 
+def _save_result_edits() -> None:
+    for field in ("subject", "body"):
+        st.session_state[f"improved_{field}"] = st.session_state[f"improved_{field}_editor"]
+
+
 def _render_result_step(settings: DeepSeekSettings) -> None:
     if not st.session_state.get("improved", False):
         _set_step(2)
         st.rerun()
+    for field in ("subject", "body"):
+        key = f"improved_{field}_editor"
+        if key not in st.session_state:
+            st.session_state[key] = st.session_state[f"improved_{field}"]
     render_section_header("优化完成", "RESULT")
     st.caption("请对比修改内容并确认最终版本。")
     draft = _draft()
@@ -412,11 +421,11 @@ def _render_result_step(settings: DeepSeekSettings) -> None:
         render_after=lambda: (
             render_email_subject_card(
                 value_key="improved_subject_editor",
-                on_change=lambda: None,
+                on_change=_save_result_edits,
             ),
             render_email_editor(
                 value_key="improved_body_editor",
-                on_change=lambda: None,
+                on_change=_save_result_edits,
             ),
         ),
     )
@@ -454,7 +463,9 @@ def _render_result_step(settings: DeepSeekSettings) -> None:
         st.rerun()
 
 
-def render_improve_workspace(*, settings: DeepSeekSettings, service_status: str) -> None:
+def render_improve_workspace(
+    *, settings: DeepSeekSettings, service_status: str, email_service: DeepSeekEmailService,
+) -> None:
     """Render a three-step UI adapter around the unchanged improvement service."""
     if "improve__step" not in st.session_state:
         st.session_state["improve__step"] = 1
@@ -468,7 +479,12 @@ def render_improve_workspace(*, settings: DeepSeekSettings, service_status: str)
         if step == 1:
             _render_draft_step()
         elif step == 2:
-            _render_target_step(settings)
+            _render_target_step(settings, email_service)
+            if st.session_state.get("improved") and secondary_action_button(
+                "查看上次优化结果", key="improve__view_previous_result",
+            ):
+                _set_step(3)
+                st.rerun()
         else:
             _render_result_step(settings)
         if st.session_state.get("improve__error") and step != 1:

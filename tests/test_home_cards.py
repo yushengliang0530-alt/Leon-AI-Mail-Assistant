@@ -63,11 +63,11 @@ class HomeTaskCardTests(unittest.TestCase):
     def test_home_uses_copilot_information_hierarchy(self) -> None:
         source = inspect.getsource(home.render_home)
         self.assertIn("今天需要完成什么商务沟通？", source)
-        self.assertIn("选择任务，Leon AI会一步步帮助你完成。", source)
-        self.assertIn("核心任务", source)
-        self.assertIn("CORE TASKS", source)
-        self.assertIn("常用任务", source)
-        self.assertIn("EVERYDAY TASKS", source)
+        self.assertIn("选择任务，Leon AI 会一步步帮助你完成。", source)
+        self.assertIn("la-public-hero", source)
+        self.assertIn("la-public-character", source)
+        self.assertIn("无需登录", source)
+        self.assertIn('key="public__tasks"', source)
         self.assertIn("探索更多工作流 · Explore More", source)
 
     def test_explore_catalog_only_exposes_supplier_as_available(self) -> None:

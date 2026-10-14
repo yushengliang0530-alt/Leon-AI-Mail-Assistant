@@ -1,12 +1,13 @@
 """DeepSeek API client, response parsing, signatures, and safe error mapping."""
 
 from dataclasses import dataclass, replace
+from contextlib import nullcontext
 import hashlib
 import json
 import logging
 import re
 import time
-from typing import Callable, Mapping
+from typing import Callable, ContextManager, Mapping
 import uuid
 
 from openai import (
@@ -371,22 +372,25 @@ class DeepSeekEmailService:
         self,
         settings: DeepSeekSettings,
         client_factory: Callable[[DeepSeekSettings], OpenAI] = create_client,
+        request_guard: Callable[[], ContextManager[None]] | None = None,
     ) -> None:
         self.settings = settings
         self._client_factory = client_factory
+        self._request_guard = request_guard or nullcontext
 
     def _completion(self, messages: list[dict[str, str]]) -> CompletionResult:
         client = self._client_factory(self.settings)
         try:
-            response = client.chat.completions.create(
-                model=self.settings.model,
-                messages=messages,
-                response_format={"type": "json_object"},
-                max_tokens=self.settings.max_tokens,
-                temperature=0.25,
-                stream=False,
-                extra_body={"thinking": {"type": "disabled"}},
-            )
+            with self._request_guard():
+                response = client.chat.completions.create(
+                    model=self.settings.model,
+                    messages=messages,
+                    response_format={"type": "json_object"},
+                    max_tokens=self.settings.max_tokens,
+                    temperature=0.25,
+                    stream=False,
+                    extra_body={"thinking": {"type": "disabled"}},
+                )
         except (
             AuthenticationError,
             RateLimitError,

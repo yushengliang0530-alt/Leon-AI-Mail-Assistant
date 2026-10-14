@@ -23,13 +23,9 @@ APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
 
 class StreamlitAppTests(unittest.TestCase):
     def create_home(self) -> AppTest:
-        with patch(
-            "access_control.configured_access_code",
-            return_value="",
-        ):
-            app = AppTest.from_file(str(APP_PATH))
-            app.run(timeout=10)
-            app.session_state["access_granted"] = True
+        app = AppTest.from_file(str(APP_PATH))
+        app.secrets = {"DEEPSEEK_API_KEY": "test-placeholder-key"}
+        app.run(timeout=10)
         self.assertFalse(list(app.exception))
         return app
 
@@ -1187,12 +1183,8 @@ class StreamlitAppTests(unittest.TestCase):
             self.assertEqual(generate_mock.call_count, 0)
             self.assertEqual(improve_mock.call_count, 0)
 
-    def test_access_gate_rejects_wrong_code_and_accepts_correct_code(self) -> None:
+    def test_public_entry_ignores_legacy_code_without_auth_or_ai(self) -> None:
         with (
-            patch(
-                "access_control.configured_access_code",
-                return_value="invite-123",
-            ),
             patch(
                 "ai_service.DeepSeekEmailService.generate_email",
             ) as generate_mock,
@@ -1201,21 +1193,11 @@ class StreamlitAppTests(unittest.TestCase):
             ) as improve_mock,
         ):
             app = AppTest.from_file(str(APP_PATH))
+            app.secrets = {"APP_ACCESS_CODE": "obsolete-test-only", "DEEPSEEK_API_KEY": "test-placeholder-key"}
             app.run(timeout=10)
-            self.assertIsNotNone(app.text_input(key="access_code_input"))
-            self.assertTrue(any(button.label == "进入应用" for button in app.button))
-
-            app.text_input(key="access_code_input").set_value("wrong")
-            app.button[0].click().run(timeout=10)
-            self.assertEqual(
-                app.error[0].value,
-                "访问码不正确，请重新输入。",
-            )
-
-            app.text_input(key="access_code_input").set_value("invite-123")
-            app.button[0].click().run(timeout=10)
             self.assertFalse(list(app.exception))
-            self.assertEqual(app.session_state["access_granted"], True)
+            self.assertFalse(list(app.text_input))
+            self.assertIsNotNone(app.button(key="home__action__reply"))
             self.assertEqual(generate_mock.call_count, 0)
             self.assertEqual(improve_mock.call_count, 0)
 

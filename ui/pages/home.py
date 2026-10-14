@@ -1,7 +1,10 @@
 """V2.1 workspace home: direct, task-led entry points."""
 
 from collections.abc import Callable
+import base64
+from functools import lru_cache
 import html
+from pathlib import Path
 
 import streamlit as st
 
@@ -11,7 +14,6 @@ from ui.components import (
     render_global_header,
     render_html,
     render_notice_bar,
-    render_section_header,
     render_task_card,
 )
 from ui.state import (
@@ -54,61 +56,60 @@ HOME_TASK_CARDS = {
 WORKSPACE_ACTIONS = ("create", "improve")
 
 
+@lru_cache(maxsize=1)
+def _character_data() -> str:
+    asset = Path(__file__).resolve().parents[2] / "previews/account-upgrade/selected-03/character-cutout.png"
+    return base64.b64encode(asset.read_bytes()).decode("ascii")
+
+
 def render_home(
     *,
     ai_service_status: str,
     environment_label: str,
-    access_protection_label: str,
     render_additional_details: Callable[[], None] | None = None,
 ) -> None:
     """Render direct task routing without changing workflow state rules."""
     inject_workspace_home_styles()
+    st.html((Path(__file__).parents[1] / "public_home.css").read_text(encoding="utf-8"))
 
     with st.container(key="home__workspace"):
         render_global_header(
             version=APP_VERSION_LABEL,
             service_status=ai_service_status,
         )
-        render_html(
-            """
-            <section class="la-home-hero">
-              <div class="la-home-kicker">BUSINESS COMMUNICATION WORKSPACE</div>
-              <h1 class="la-home-title">今天需要完成什么商务沟通？</h1>
-              <p class="la-home-copy">
-                选择任务，Leon AI会一步步帮助你完成。
-                <span class="la-home-copy-en">Choose a task and complete it with clear, guided steps.</span>
-              </p>
-            </section>
-            """
-        )
-
-        render_section_header("核心任务", "CORE TASKS")
-        render_task_card(
-            card=HOME_TASK_CARDS["reply"],
-            on_click=open_reply_workspace,
-        )
-
-        render_section_header("常用任务", "EVERYDAY TASKS")
-        task_columns = st.columns(2)
-        callbacks = {
-            "create": open_create_workspace,
-            "improve": open_improve_workspace,
-        }
-        for column, action in zip(task_columns, WORKSPACE_ACTIONS, strict=True):
-            with column:
-                render_task_card(
-                    card=HOME_TASK_CARDS[action],
-                    on_click=callbacks[action],
+        with st.container(key="public__welcome"):
+            hero, tasks = st.columns((1.05, 1), gap="large")
+            with hero:
+                render_html(
+                    f"""
+                    <section class="la-public-hero" aria-labelledby="public-hero-title">
+                      <span class="la-public-eyebrow">WORK BETTER, WRITE CLEARER</span>
+                      <h1 id="public-hero-title">让英文商务沟通<br><em>更清晰。</em></h1>
+                      <p>从收到邮件到写好回复，<br>把每一步交给清晰的工作流程。</p>
+                      <span class="la-public-english">Professional English. Clear communication.</span>
+                      <img class="la-public-character" src="data:image/png;base64,{_character_data()}"
+                           alt="身穿灰蓝职业装、手持平板的静态商务人物" width="1024" height="1536">
+                      <span class="la-public-signature">LEON AI · BUSINESS EMAIL WORKSPACE</span>
+                    </section>
+                    """
                 )
-
-        st.button(
-            "探索更多工作流 · Explore More",
-            key="home__explore_more",
-            type="secondary",
-            icon=":material/apps:",
-            use_container_width=True,
-            on_click=open_explore_more,
-        )
+            with tasks:
+                with st.container(key="public__tasks"):
+                    render_html(
+                        '<div class="la-public-intro"><span class="la-public-eyebrow">YOUR WORKSPACE STARTS HERE</span>'
+                        '<h2>今天需要完成什么商务沟通？</h2>'
+                        '<p>选择任务，Leon AI 会一步步帮助你完成。</p></div>'
+                    )
+                    callbacks = {"reply": open_reply_workspace, "create": open_create_workspace,
+                                 "improve": open_improve_workspace}
+                    for action, card in HOME_TASK_CARDS.items():
+                        render_task_card(card=card, on_click=callbacks[action])
+                    st.button(
+                        "探索更多工作流 · Explore More", key="home__explore_more",
+                        type="secondary", icon=":material/apps:", use_container_width=True,
+                        on_click=open_explore_more,
+                    )
+                    st.caption("无需登录 · 内容仅保留在当前会话，请及时复制")
 
         render_notice_bar(
             "安全提醒",
@@ -119,10 +120,14 @@ def render_home(
             <div class="la-home-status">
               <span>AI 服务：{html.escape(ai_service_status)}</span>
               <span>运行环境：{html.escape(environment_label)}</span>
-              <span>测试访问保护：{html.escape(access_protection_label)}</span>
+              <span>V2.1 · 免登录工作台</span>
             </div>
             """
         )
+
+        with st.expander("使用说明与公共额度", expanded=False):
+            st.write("每会话每日最多 20 次实际 AI 请求，整个应用进程每日最多 200 次，以 UTC 日期计算。分析、生成、检查及格式修复分别计次，失败请求也计次。")
+            st.caption("这是小规模公共用量保护，不是按人配额或硬性金额上限；应用重启会重置额度。刷新或断线可能丢失当前会话内容。本工具不会自动发送商务邮件。")
 
         if render_additional_details:
             with st.expander("产品说明 · About Leon AI", expanded=False):

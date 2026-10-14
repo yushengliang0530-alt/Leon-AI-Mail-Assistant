@@ -4,6 +4,18 @@
 
 帮助职场人士通过引导式工作流完成供应商跟进、来信回复、英文草稿优化和发送前检查。用户不需要准备复杂 Prompt，系统会根据已确认的事实生成可编辑、可人工审核的英文商务邮件。
 
+## 免登录工作台 · 2026-10-14
+
+保留 selected-03 静态人物和蓝白商务首页，直接进入 Reply / Create / Improve，无需账号或测试访问码。注册开发暂停，个人历史记录、云端保存及账号设置不在本次发布范围内；原账号开发分支和测试数据库保持不变。
+
+内容仅保留在当前 Streamlit 会话，请及时复制。新会话、断线或应用重启可能丢失尚未复制的内容。应用不连接 Supabase，不会自动发送生成的商务邮件。
+
+### 公共用量保护
+
+服务端每个会话每 UTC 日最多 20 次实际 AI 请求，整个应用进程每天最多 200 次；同一会话最多一个在途请求，租约最长 10 分钟。分析、生成、Coverage、Preflight 及格式修复分别计次，失败请求也计次。刷新、切页、编辑和复制不调用模型。
+
+这是小规模公共用量防护，**不是按人配额，也不是跨重启或多实例的硬预算**。新会话可以获得新的会话额度，但受进程总额约束；应用重启或重新部署会重置计数。达到限额时不调用模型，已有结果仍可复制。模型收费还与 Token 数有关。
+
 ## 产品定位
 
 Leon AI 面向中国职场人员、外贸人员和工程项目人员。V2.1 以 Copilot Workspace 组织任务：系统主动询问必要事实、分析来信诉求、记录用户立场，并检查回复覆盖和发送风险。
@@ -23,7 +35,7 @@ Leon AI 面向中国职场人员、外贸人员和工程项目人员。V2.1 以 
 - 本地敏感内容检查、高风险确认和本地化称谓建议
 - 可编辑及复制邮件主题和正文
 - AI 服务状态、耗时和可用 Token 用量
-- 可选访问码及 Streamlit Community Cloud 支持
+- 无需登录或测试码，支持 Streamlit Community Cloud
 
 ## V2.1 Copilot Workspace Experience Upgrade
 
@@ -58,9 +70,7 @@ python -m unittest discover -s tests -v
 
 ## 本地 Secrets 配置
 
-```bash
-cp .streamlit/secrets.toml.example .streamlit/secrets.toml
-```
+仅在 `.streamlit/secrets.toml` 不存在时按示例新建；已有配置必须保留，不要覆盖。
 
 在本地 `.streamlit/secrets.toml` 中配置：
 
@@ -68,19 +78,18 @@ cp .streamlit/secrets.toml.example .streamlit/secrets.toml
 DEEPSEEK_API_KEY = "your-deepseek-api-key"
 DEEPSEEK_MODEL = "deepseek-v4-flash"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-APP_ACCESS_CODE = "choose-a-test-access-code"
 ```
 
-`APP_ACCESS_CODE` 可选。不要把 `.streamlit/secrets.toml` 上传到 GitHub，也不要把真实密钥写入 Python 或 Markdown 文件。
+旧 `APP_ACCESS_CODE` 不再读取，无需删除或修改线上 Secrets。本版本不需要 Supabase 配置。不要把 `.streamlit/secrets.toml` 上传到 GitHub，也不要把真实密钥写入 Python 或 Markdown 文件。
 
 ## Streamlit Community Cloud 部署
 
 1. 将安全检查后的项目推送到 GitHub。
-2. 在 Streamlit Community Cloud 创建应用。
+2. 使用现有 Streamlit Community Cloud 应用，不另建正式应用。
 3. 选择仓库、`main` 分支和入口文件 `app.py`。
 4. 在高级设置选择 Python 3.12。
 5. 在平台 Secrets 设置中粘贴与本地相同结构的 TOML 配置。
-6. 部署后验证访问门禁、供应商流程、回复流程、草稿优化、状态区和移动端布局。
+6. 部署后验证免登录首页、供应商流程、回复流程、草稿优化、额度保护及移动端布局。
 
 `runtime.txt` 同时记录 `python-3.12`；如平台不再以该文件控制版本，请以部署高级设置为准。
 
@@ -96,20 +105,23 @@ git ls-files .streamlit/secrets.toml .env
 
 ## 安全注意事项
 
-- 用户只有主动点击生成或优化时，输入才会发送至 DeepSeek API。
+- 用户只有主动触发分析、生成、优化或检查时，相关输入才会发送至 DeepSeek API；自动格式修复最多一次且同样计次。
 - 不要输入密码、验证码、银行账号、身份证件、API Key 等敏感凭证。
 - 涉及客户、合同、价格、项目或公司内部信息时，应遵守公司保密制度。
 - 本地风险检查只提供辅助提示，不能保证发现全部敏感内容。
 - 系统当前不主动将输入、分析结果或生成结果写入数据库或项目文件。
 - 是否可由第三方 AI 服务处理特定信息，应以用户所在公司的政策为准。
-- 页面不会显示 API Key、访问码、系统路径、服务器 IP 或完整内部异常。
+- 页面不会显示 API Key、系统路径、服务器 IP 或完整内部异常。
+- 不保证 AI 提供商或托管平台不保留数据，应遵守其政策及所在公司的保密要求。
 
 ## 已知限制
 
-- 可选访问码只是轻量访问保护，不是正式身份认证。
+- 本版本公开免登录，不提供云端私人空间；请勿输入高度敏感资料。
 - AI 输出与风险分析可能存在错误、遗漏或误判，发送前必须人工审核。
 - 本地化建议不能替代对方名片、邮件签名及正式公司资料。
-- 暂无用户注册、支付、额度、历史记录、企业知识库和管理后台。
+- 注册功能暂停；不提供个人配额、支付、历史记录、企业知识库和管理后台。
 - 暂不连接 Outlook、Gmail，也不会自动发送邮件。
 - 当前场景化新邮件仅正式支持供应商跟进场景。
 - DeepSeek 服务可用性和输出质量受账户额度、模型状态与输入完整度影响。
+
+人物素材来源：本项目阶段一图像生成概念 `concept-03-soft-3d-woman.png` 的背景分离版本，沿用用户选定的 `selected-03/character-cutout.png`。未采用 GitHub / Live2D 演示角色，不声称独占版权，不包含人物跟随、VRM 或第三方模型接口。

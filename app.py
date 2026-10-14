@@ -6,11 +6,7 @@ import time
 
 import streamlit as st
 
-from access_control import (
-    configured_access_code,
-    runtime_environment,
-    verify_access_code,
-)
+from access_control import runtime_environment
 from ai_service import AIServiceError, DeepSeekEmailService, SenderDetails
 from communication_analysis_service import CommunicationAnalysis
 from config import (
@@ -52,6 +48,7 @@ from ui.state import (
     return_to_home,
 )
 from ui.styles import inject_global_styles
+from ui.public_usage import session_request_guard
 
 st.set_page_config(
     page_title=f"Leon AI · {PRODUCT_NAME_ZH} · {APP_VERSION_LABEL}",
@@ -797,61 +794,16 @@ def render_examples() -> None:
 
 runtime_secrets = read_streamlit_secrets()
 settings = load_settings(runtime_secrets)
-app_access_code = configured_access_code(runtime_secrets)
 
 
-def submit_access_code() -> None:
-    provided_code = str(st.session_state.get("access_code_input", ""))
-    is_valid = verify_access_code(app_access_code, provided_code)
-    st.session_state.access_granted = is_valid
-    st.session_state.access_code_error = not is_valid
-    st.session_state.access_code_input = ""
-
-
-if "access_granted" not in st.session_state:
-    st.session_state.access_granted = False
-if "access_code_error" not in st.session_state:
-    st.session_state.access_code_error = False
-
-if app_access_code and not st.session_state.access_granted:
-    render_html(
-        """
-        <div class="brand-row">
-            <div class="brand-mark">LA</div>
-            <div class="brand-name">Leon AI</div>
-        </div>
-        <div class="hero">
-            <div class="eyebrow">INVITED TESTING · 受邀测试</div>
-            <h1>Leon AI 内部测试版</h1>
-            <p>本版本目前仅面向受邀测试用户，请输入访问码继续。</p>
-        </div>
-        """
-    )
-    st.text_input(
-        "测试访问码",
-        type="password",
-        key="access_code_input",
-        placeholder="请输入测试访问码",
-    )
-    st.button(
-        "进入应用",
-        type="primary",
-        use_container_width=True,
-        on_click=submit_access_code,
-    )
-    if st.session_state.access_code_error:
-        st.error("访问码不正确，请重新输入。")
-    st.caption("此访问码仅用于小范围测试访问控制，不是正式安全认证。")
-    st.stop()
+def guarded_email_service() -> DeepSeekEmailService:
+    return DeepSeekEmailService(settings, request_guard=session_request_guard())
 
 try:
     current_app_url = str(st.context.url)
 except Exception:
     current_app_url = ""
 environment_label = runtime_environment(current_app_url)
-access_protection_label = (
-    "已启用" if app_access_code else "测试访问保护尚未启用"
-)
 
 
 SESSION_DEFAULTS = {
@@ -926,7 +878,6 @@ if current_active_page == "home":
     render_home(
         ai_service_status=home_service_status,
         environment_label=environment_label,
-        access_protection_label=access_protection_label,
     )
     st.stop()
 
@@ -940,7 +891,7 @@ if current_active_page == "explore_more":
 
 if current_active_page == "create_workspace":
     render_create_workspace(
-        scenario_service=ScenarioService(DeepSeekEmailService(settings)),
+        scenario_service=ScenarioService(guarded_email_service()),
         service_status=home_service_status,
     )
     st.stop()
@@ -949,18 +900,19 @@ if current_active_page == "improve_workspace":
     render_improve_workspace(
         settings=settings,
         service_status=home_service_status,
+        email_service=guarded_email_service(),
     )
     st.stop()
 
 if current_active_page == "supplier_workspace":
     render_supplier_workflow(
-        scenario_service=ScenarioService(DeepSeekEmailService(settings)),
+        scenario_service=ScenarioService(guarded_email_service()),
         service_status=home_service_status,
     )
     st.stop()
 
 if current_active_page == "reply_workspace":
-    reply_backend = DeepSeekEmailService(settings)
+    reply_backend = guarded_email_service()
     render_reply_workspace(
         analysis_service=IncomingEmailAnalysisService(
             reply_backend
@@ -1143,7 +1095,7 @@ if active_page == "写英文邮件":
             request_started_at = time.perf_counter()
             try:
                 with st.spinner("正在生成英文邮件，请稍候……"):
-                    result = DeepSeekEmailService(settings).generate_email(
+                    result = guarded_email_service().generate_email(
                         recipient=recipient,
                         requested_subject=topic,
                         chinese_brief=request,
@@ -1340,7 +1292,7 @@ else:
             request_started_at = time.perf_counter()
             try:
                 with st.spinner("正在优化英文邮件，请稍候……"):
-                    result = DeepSeekEmailService(settings).improve_email(
+                    result = guarded_email_service().improve_email(
                         original_email=original_email,
                         tone=improve_tone,
                         country_region=(
@@ -1499,8 +1451,8 @@ status_rows = [
         f'<span class="value">{html.escape(environment_label)}</span></div>'
     ),
     (
-        '<div class="row"><span>测试访问保护</span>'
-        f'<span class="value">{html.escape(access_protection_label)}</span></div>'
+        '<div class="row"><span>使用方式</span>'
+        '<span class="value">免登录 · 仅当前会话</span></div>'
     ),
 ]
 if st.session_state.deepseek_connected:

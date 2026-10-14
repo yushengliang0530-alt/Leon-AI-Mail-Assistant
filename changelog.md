@@ -1,5 +1,15 @@
 # Changelog
 
+## V2.1 — 2026-10-14 · Public workspace update
+
+- Preserved the selected-03 static business character and blue-white workspace design
+- Removed the test access-code gate; Reply, Create and Improve remain directly accessible
+- Paused account registration and cloud history development; preserved the separate development branch and staging database
+- Added server-side anonymous allowances: 20 actual API calls per session and 200 per process per UTC day, including repair attempts
+- Added atomic shared counters and per-session request leases; counters reset on process restart and are not a durable billing cap
+- Kept DeepSeek configuration, prompts, signatures, risk rules, Coverage and Preflight business behaviour unchanged
+- Expanded public-navigation, session-isolation and allowance regression tests with mocked AI
+
 ## V2.1 — 2026-08-18
 
 ### Changed

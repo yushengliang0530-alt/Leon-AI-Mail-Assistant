@@ -2,7 +2,10 @@
 
 ## Current — V2.1 Leon AI Copilot
 
-- V2.1 Copilot Workspace Experience Upgrade 已完成，待人工验收与正式发布
+- V2.1 Copilot Workspace Experience Upgrade 已完成
+- 2026-10-14 免登录发布：保留 selected-03 静态人物与蓝白商务首页，移除测试码，保留三大 Workspace
+- 注册账号及个人记录开发暂停，保留原开发分支和测试数据库；不在本次发布中接入
+- 公共会话 / 进程用量保护；跨重启硬预算仍属后续独立范围
 - 上线 Business Communication Copilot 工作台首页
 - 完成 Reply、Create 和 Improve 独立 Workspace 体验
 - 统一 Header、Workflow Navigation、Action Bar、Loading、Empty 和 Status 组件
@@ -28,10 +31,10 @@
 
 ## Later / Future
 
-- 用户账号
-- 使用额度
+- 用户账号（暂停）
+- 持久化用量与按人额度
 - 支付与订阅
-- 历史记录
+- 历史记录（暂停）
 - 企业知识库
 - 管理后台
 - 正式身份认证、团队权限和生产级限流

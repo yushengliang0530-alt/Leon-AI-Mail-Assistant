@@ -1,23 +1,8 @@
-"""Small, replaceable access gate for invited external testers."""
+"""Reader-safe environment label; public workspaces have no access-code gate."""
 
 from collections.abc import Mapping
-import hmac
 import os
 from urllib.parse import urlparse
-
-
-def configured_access_code(secrets: Mapping[str, object] | None) -> str:
-    """Read the optional test code from the supplied secrets mapping only."""
-    if not secrets:
-        return ""
-    return str(secrets.get("APP_ACCESS_CODE", "")).strip()
-
-
-def verify_access_code(expected: str, provided: str) -> bool:
-    """Compare non-empty access codes without exposing either value."""
-    if not expected:
-        return True
-    return hmac.compare_digest(expected, provided)
 
 
 def runtime_environment(
